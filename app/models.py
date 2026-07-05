@@ -10,6 +10,40 @@ CRITERIA = [
     "feasibility",
 ]
 
+# Full definitions used in prompts and UI
+CRITERIA_DEFS = [
+    {
+        "key": "clinical_benefit",
+        "label": "Clinical Benefit",
+        "definition": "Comparative effectiveness vs. current standard of care",
+    },
+    {
+        "key": "safety",
+        "label": "Safety",
+        "definition": "Harms, adverse events, tolerability",
+    },
+    {
+        "key": "cost_effectiveness",
+        "label": "Cost-Effectiveness",
+        "definition": "Cost per unit of health benefit (e.g., cost/QALY)",
+    },
+    {
+        "key": "budget_impact",
+        "label": "Budget Impact",
+        "definition": "Net effect on payer budget if adopted",
+    },
+    {
+        "key": "equity_access",
+        "label": "Equity & Access",
+        "definition": "Effect on underserved or high-need populations",
+    },
+    {
+        "key": "feasibility",
+        "label": "Feasibility",
+        "definition": "Practicality of delivering/implementing the technology",
+    },
+]
+
 CriterionName = Literal[
     "clinical_benefit",
     "safety",
