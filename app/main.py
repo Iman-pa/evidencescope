@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 
 from app.audit import get_audit_trail, log_override
@@ -23,6 +23,17 @@ from app.parsing import parse_pdf
 from app.scoring import compute_weighted_score
 
 app = FastAPI(title="EvidenceScope API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite default
+        "http://localhost:4173",  # Vite preview
+        "http://127.0.0.1:5173",
+    ],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------------------------
 # In-memory state store  {analysis_id: AnalysisState}
@@ -90,7 +101,6 @@ async def analyze(files: list[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="At least one PDF file is required.")
 
-    # Parse each uploaded file via a named temp file (pdfplumber needs a path)
     all_pages: list[list[dict]] = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for upload in files:
@@ -131,11 +141,10 @@ async def analyze(files: list[UploadFile] = File(...)):
             detail=f"Unexpected error during evidence extraction: {type(exc).__name__}: {exc}",
         )
 
-    token_usage = extraction.pop("_token_usage", None)
+    extraction.pop("_token_usage", None)
     has_conflicts = extraction.pop("has_conflicts", False)
-    extraction.pop("conflicts", None)  # conflicts included in criteria_results below
+    extraction.pop("conflicts", None)
 
-    # Build clean per-criterion results (only the 6 criteria keys)
     criteria_results = {k: extraction[k] for k in CRITERIA if k in extraction}
     current_scores = _scores_from_extraction(criteria_results)
     current_weights = dict(_EQUAL_WEIGHTS)
@@ -198,7 +207,7 @@ def override(req: OverrideRequest):
             )
         old_value = state.current_scores[req.criterion_key]
         state.current_scores[req.criterion_key] = req.new_value
-    else:  # weight
+    else:
         old_value = state.current_weights[req.criterion_key]
         state.current_weights[req.criterion_key] = req.new_value
 
