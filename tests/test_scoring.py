@@ -17,6 +17,85 @@ EQUAL_WEIGHTS = {k: 1.0 for k in CRITERIA}
 
 
 # ---------------------------------------------------------------------------
+# Regression tests for the weight-scale mismatch bug (found 2026-07-08)
+# ---------------------------------------------------------------------------
+# Root cause: backend initialised weights at 1.0 each; frontend sent slider
+# values as percentages (~17).  Releasing one slider sent new_value=17 while
+# others stayed at 1.0 → that criterion got 17/(17+5×1)=77% of normalised
+# weight.  With budget_impact (score=3, the lowest) at 77%, the display
+# collapsed to 3.59 instead of ~5.17.
+#
+# Fix: backend now initialises at 100/N per criterion so that sending 17 for
+# one criterion while others hold 16.667 normalises to ≈equal weights.
+
+def test_exact_scenario_scores_7_6_5_3_3_7_equal_weights():
+    """Scores 7,6,5,3,3,7 with truly equal weights must display as ~5.17.
+
+    Hand calculation:
+      criteria order: clinical_benefit, safety, cost_effectiveness,
+                      budget_impact, equity_access, feasibility
+      scores:         7,    6,     5,    3,    3,    7
+      normalised:     6/8,  5/8,   4/8,  2/8,  2/8,  6/8
+                    = 0.75, 0.625, 0.5,  0.25, 0.25, 0.75
+      sum            = 3.125
+      backend_value  = 3.125 / 6 = 0.520833...
+      display (×8+1) = 5.1667
+
+    The bug produced 3.59 — this test would have caught it.
+    """
+    scores = {
+        "clinical_benefit":   7.0,
+        "safety":             6.0,
+        "cost_effectiveness": 5.0,
+        "budget_impact":      3.0,
+        "equity_access":      3.0,
+        "feasibility":        7.0,
+    }
+    result = compute_weighted_score(scores, EQUAL_WEIGHTS)
+    expected_backend = 3.125 / 6  # 0.520833...
+    assert abs(result - expected_backend) < 1e-9, f"Backend value: {result}"
+    display = result * 8 + 1
+    assert abs(display - 5.1667) < 1e-3, f"Display value: {display:.4f}"
+
+
+def test_weight_scale_mismatch_bug_regression():
+    """Sending weight=17 for one criterion when others are 100/6=16.667
+    must give approximately equal normalised weights — not 77% for that criterion.
+
+    Bug scenario (before fix):
+      weights = {budget_impact: 17, others: 1.0}
+      → budget_impact normalised weight = 17/(17+5×1) = 77.3%
+      → display with scores [7,6,5,3,3,7] = 3.59
+
+    After fix (backend initialises at 16.667):
+      weights = {budget_impact: 17, others: 16.667}
+      → budget_impact normalised weight ≈ 16.9%  (approximately equal)
+      → display ≈ 5.16
+    """
+    scores = {
+        "clinical_benefit":   7.0,
+        "safety":             6.0,
+        "cost_effectiveness": 5.0,
+        "budget_impact":      3.0,
+        "equity_access":      3.0,
+        "feasibility":        7.0,
+    }
+    # Post-fix state: one slider committed at 17, others still at 100/6
+    weights_post_fix = {k: 100 / 6 for k in CRITERIA}
+    weights_post_fix["budget_impact"] = 17.0
+
+    result = compute_weighted_score(scores, weights_post_fix)
+    display = result * 8 + 1
+
+    # Must be close to the equal-weight result (~5.17), not 3.59
+    assert display > 4.5, (
+        f"Weight-scale bug still present: display={display:.2f} "
+        f"(expected ~5.16, bug produced 3.59)"
+    )
+    assert abs(display - 5.16) < 0.15, f"Unexpected display value: {display:.4f}"
+
+
+# ---------------------------------------------------------------------------
 # Case 1: Equal weights, uniform scores
 # ---------------------------------------------------------------------------
 

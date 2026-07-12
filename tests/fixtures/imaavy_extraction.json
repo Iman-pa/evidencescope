@@ -1,0 +1,144 @@
+{
+  "clinical_benefit": {
+    "evidence": "Based on one RCT (VIVACITY-MG3), nipocalimab added to SoC likely results in a marginal clinically meaningful improvement in functional ability (MG-ADL) and muscle strength (QMG) compared with placebo over 24 weeks, though certainty is reduced due to imprecision. No direct comparative evidence versus active comparators (efgartigimod, rozanolixizumab, ravulizumab, zilucoplan) was submitted, and the indirect treatment comparison results were uncertain.",
+    "citation": "Page 4",
+    "suggested_score": 4,
+    "rationale": "While nipocalimab demonstrates likely marginal improvement over placebo, the absence of direct comparative evidence and uncertainty in the ITC leave its relative effectiveness versus available active comparators unclear, limiting confidence in a favourable adoption signal.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "safety": {
+    "evidence": "In VIVACITY-MG3, TEAEs occurred at similar rates in nipocalimab (81.6%) and placebo (82.7%) arms; SAEs were numerically lower with nipocalimab (9.2%) versus placebo (14.3%), and serious/severe infections were rare (3.1% vs 4.1%). In the OLE phase, TEAE incidence was approximately 90% in both groups and SAEs ranged from 23.9% to 28.4%, with 3 deaths reported.",
+    "citation": "Page 31",
+    "suggested_score": 6,
+    "rationale": "The overall harms profile of nipocalimab appears broadly comparable to placebo in the short term, with no excess in serious infections or discontinuations due to AEs, though longer-term OLE data show higher cumulative SAE rates warranting continued monitoring.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "cost_effectiveness": {
+    "evidence": "In the CDA-AMC base case, nipocalimab plus SOC was predicted to be more costly (incremental costs of $86,026) and associated with a loss of 0.04 QALYs compared to zilucoplan plus SOC, making it dominated. The annual cost of nipocalimab is approximately $395,085 in year one and $380,501 in subsequent years per patient.",
+    "citation": "Page 5",
+    "suggested_score": 2,
+    "rationale": "Nipocalimab is predicted to be both more costly and less effective than zilucoplan in the CDA-AMC base case, indicating it is not cost-effective at its submitted price without meaningful price reductions.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "budget_impact": {
+    "evidence": "CDA-AMC estimates the budget impact of reimbursing nipocalimab for the Health Canada indicated population would be approximately $705 million over 3 years, with an estimated drug expenditure of $706 million. If limited to the reimbursement request population, the estimated budget impact would be $154 million over 3 years, with incremental impacts exceeding $40 million in years 2 and 3.",
+    "citation": "Page 6",
+    "suggested_score": 2,
+    "rationale": "The projected budget impact is very large under both the full Health Canada indication and the narrower reimbursement request scenario, with incremental annual impacts exceeding the $40 million threshold that triggers economic feasibility concerns.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "equity_access": {
+    "evidence": "Generalized MG disproportionately affects Black and African American populations, but these groups and Indigenous peoples were underrepresented in VIVACITY-MG3, limiting understanding of nipocalimab's safety and efficacy in these groups. Clinical experts noted that access may remain limited for patients in rural or remote regions due to variable community infusion capacity across jurisdictions, despite safety monitoring requirements being modest and compatible with delivery outside academic centres.",
+    "citation": "Page 46",
+    "suggested_score": 4,
+    "rationale": "The underrepresentation of high-need demographic groups in clinical trials and geographic barriers to infusion access create equity concerns that partially offset the potential for community-based delivery, resulting in a slightly unfavourable equity and access profile.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "feasibility": {
+    "evidence": "Nipocalimab is administered as an IV infusion (30 mg/kg loading dose followed by 15 mg/kg every two weeks), which requires hospital or specialty infusion infrastructure. The document notes that 'while this regimen is feasible in hospital and specialty infusion settings, implementation may be more challenging in community or rural clinics with limited infusion capacity,' and that results may be most directly applicable to tertiary or academic centres with multidisciplinary expertise.",
+    "citation": "Page 30",
+    "suggested_score": 4,
+    "rationale": "The biweekly IV infusion schedule is deliverable in tertiary and academic centres consistent with the trial setting, but the requirement for infusion infrastructure and specialist oversight limits feasibility in community and rural settings across Canada.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "conflicts": {
+    "clinical_benefit": [
+      {
+        "evidence": "Based on one RCT (VIVACITY-MG3), nipocalimab added to SoC likely results in a marginal clinically meaningful improvement in functional ability (MG-ADL) and muscle strength (QMG) compared with placebo over 24 weeks, though certainty is reduced due to imprecision. No direct comparative evidence versus active comparators (efgartigimod, rozanolixizumab, ravulizumab, zilucoplan) was submitted, and the indirect treatment comparison results were uncertain.",
+        "citation": "Page 4",
+        "suggested_score": 4,
+        "rationale": "While nipocalimab demonstrates likely marginal improvement over placebo, the absence of direct comparative evidence and uncertainty in the ITC leave its relative effectiveness versus available active comparators unclear, limiting confidence in a favourable adoption signal.",
+        "confidence": "high",
+        "verification_flag": false,
+        "verification_note": null
+      },
+      {
+        "evidence": "In the pivotal VIVACITY-MG3 trial, nipocalimab showed a statistically significant between-group difference of –1.45 points in MG-ADL score (95% CI, –2.38 to –0.52; p=0.002) and –2.81 points in QMG score (95% CI, –4.22 to –1.41; p<0.001) versus placebo plus SOC, both rated as moderate certainty evidence. However, the clinical importance is uncertain as the lower bounds of the 95% CIs include effects not considered clinically important relative to literature-based MIDs.",
+        "citation": "Page 30",
+        "suggested_score": 5,
+        "rationale": "While statistically significant improvements over placebo were demonstrated on both primary endpoints at moderate certainty, imprecision means clinical importance remains unclear, and no direct head-to-head comparisons versus relevant active comparators (e.g., efgartigimod, rozanolixizumab) are available.",
+        "confidence": "high"
+      },
+      {
+        "evidence": "Evidence from VIVACITY-MG3 indicates nipocalimab likely improves MG-ADL (–1.45 points) and QMG (–2.81 points) scores at weeks 22–24 compared with placebo, but these effect sizes fall below the literature-based MIDs of 2 and 3 points respectively. The NMA comparing nipocalimab to active comparators (efgartigimod, rozanolixizumab, zilucoplan, ravulizumab) showed 95% CrIs that crossed the null for both MG-ADL and QMG, leaving comparative efficacy uncertain.",
+        "citation": "Page 44",
+        "suggested_score": 4,
+        "rationale": "Nipocalimab shows marginal improvement over placebo that may be clinically important per expert opinion, but falls below MID thresholds and demonstrates no statistically significant superiority or inferiority versus any active comparator, reflecting substantial uncertainty in comparative effectiveness.",
+        "confidence": "high"
+      }
+    ],
+    "safety": [
+      {
+        "evidence": "In VIVACITY-MG3, TEAEs occurred at similar rates in nipocalimab (81.6%) and placebo (82.7%) arms; SAEs were numerically lower with nipocalimab (9.2%) versus placebo (14.3%), and serious/severe infections were rare (3.1% vs 4.1%). In the OLE phase, TEAE incidence was approximately 90% in both groups and SAEs ranged from 23.9% to 28.4%, with 3 deaths reported.",
+        "citation": "Page 31",
+        "suggested_score": 6,
+        "rationale": "The overall harms profile of nipocalimab appears broadly comparable to placebo in the short term, with no excess in serious infections or discontinuations due to AEs, though longer-term OLE data show higher cumulative SAE rates warranting continued monitoring.",
+        "confidence": "high",
+        "verification_flag": false,
+        "verification_note": null
+      },
+      {
+        "evidence": "In the 24-week double-blind phase of VIVACITY-MG3, TEAEs occurred in 82.7% of nipocalimab-treated patients and 81.6% of placebo patients, with no opportunistic or fatal infections and rare deaths (1 nipocalimab, 2 placebo). The ITC found no significant difference in any AE rates versus active comparators, and nipocalimab showed a lower odds of SAEs compared to ravulizumab only; the OLE reported no new safety signals.",
+        "citation": "Page 45",
+        "suggested_score": 6,
+        "rationale": "Nipocalimab's adverse event profile is broadly comparable to placebo and active comparators, with no emerging safety signals over extended follow-up, though comparative safety conclusions remain uncertain due to NMA methodological limitations.",
+        "confidence": "high"
+      }
+    ],
+    "cost_effectiveness": [
+      {
+        "evidence": "In the CDA-AMC base case, nipocalimab plus SOC was predicted to be more costly (incremental costs of $86,026) and associated with a loss of 0.04 QALYs compared to zilucoplan plus SOC, making it dominated. The annual cost of nipocalimab is approximately $395,085 in year one and $380,501 in subsequent years per patient.",
+        "citation": "Page 5",
+        "suggested_score": 2,
+        "rationale": "Nipocalimab is predicted to be both more costly and less effective than zilucoplan in the CDA-AMC base case, indicating it is not cost-effective at its submitted price without meaningful price reductions.",
+        "confidence": "high",
+        "verification_flag": false,
+        "verification_note": null
+      },
+      {
+        "evidence": "In the CDA-AMC base case, nipocalimab plus SOC was dominated by zilucoplan plus SOC (more costly at $1,812,890 total costs and less effective at 16.44 QALYs versus zilucoplan's $1,726,864 and 16.49 QALYs). Even with a 90% price reduction, the ICER versus SOC remains $527,005 per QALY, and nipocalimab would not be considered cost-effective at any willingness-to-pay threshold as long as zilucoplan is available.",
+        "citation": "Page 51",
+        "suggested_score": 1,
+        "rationale": "Nipocalimab is dominated by zilucoplan at its submitted list price and remains highly unlikely to be cost-effective versus SOC even at substantial price reductions, representing a strongly unfavourable cost-effectiveness profile.",
+        "confidence": "high"
+      }
+    ],
+    "budget_impact": [
+      {
+        "evidence": "CDA-AMC estimates the budget impact of reimbursing nipocalimab for the Health Canada indicated population would be approximately $705 million over 3 years, with an estimated drug expenditure of $706 million. If limited to the reimbursement request population, the estimated budget impact would be $154 million over 3 years, with incremental impacts exceeding $40 million in years 2 and 3.",
+        "citation": "Page 6",
+        "suggested_score": 2,
+        "rationale": "The projected budget impact is very large under both the full Health Canada indication and the narrower reimbursement request scenario, with incremental annual impacts exceeding the $40 million threshold that triggers economic feasibility concerns.",
+        "confidence": "high",
+        "verification_flag": false,
+        "verification_note": null
+      },
+      {
+        "evidence": "CDA-AMC estimated the incremental budget impact of reimbursing nipocalimab at approximately $705 million over 3 years for the full Health Canada–indicated population (822 patients receiving nipocalimab by year 3), or approximately $154 million over 3 years for the narrower sponsor-requested reimbursement population (194 patients by year 3).",
+        "citation": "Page 51",
+        "suggested_score": 1,
+        "rationale": "The estimated 3-year budget impact of $154–$705 million represents a substantial incremental cost to public drug plans, strongly unfavourable from a budget impact perspective.",
+        "confidence": "high"
+      }
+    ]
+  },
+  "has_conflicts": true,
+  "_token_usage": {
+    "input_tokens": 47318,
+    "output_tokens": 4311,
+    "chunks": 4,
+    "approx_cost_usd": 0.2066
+  }
+}

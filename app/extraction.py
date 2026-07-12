@@ -14,6 +14,7 @@ extractions are preserved rather than silently discarded.
 
 import json
 import os
+import re
 from typing import Any
 
 import anthropic
@@ -25,6 +26,112 @@ CHUNK_WORD_THRESHOLD = 8_000  # words per API call
 MODEL = "claude-sonnet-4-6"
 MAX_TOKENS = 1_500
 CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+
+# CDA-AMC reports embed a barcode/watermark footer on every page in the form
+# "Combined Review for Drug (Brand) 111222" where the trailing number is a machine
+# encoding of the physical page number — NOT a human-readable page reference. pdfplumber
+# extracts these as literal digits, which could mislead Claude into citing garbage numbers.
+# The pattern is specific to CDA-AMC's "Combined Review for ..." footer line.
+_BARCODE_FOOTER_RE = re.compile(
+    r"^Combined\s+Review\s+for\s+.+\(.+\)\s+\d{3,}\s*$", re.MULTILINE | re.IGNORECASE
+)
+
+
+def _strip_barcode_footers(text: str) -> str:
+    """Remove CDA-AMC barcode/watermark footer lines before sending page text to Claude."""
+    return _BARCODE_FOOTER_RE.sub("", text)
+
+
+MAX_VERIFY_TOKENS = 400
+
+_VERIFY_SYSTEM_PROMPT = """\
+You are verifying evidence extraction results for a health technology reimbursement \
+decision-support tool. Respond with ONLY a valid JSON object — no prose, no fences.\
+"""
+
+_VERIFY_USER_TEMPLATE = """\
+Review whether each suggested_score is directionally consistent with the evidence.
+
+Scale: 1 = strongly unfavourable for adoption, 5 = neutral/unclear, 9 = strongly favourable.
+
+Flag a mismatch ONLY when there is a clear directional discrepancy — for example:
+- Evidence clearly describes strong clinical benefit but score is ≤ 3
+- Evidence clearly describes major harms or failure but score is ≥ 7
+- Evidence says "not found in document" but score ≠ 5
+
+Do NOT flag minor calibration differences or low-confidence entries where score 5 is appropriate.
+
+EXTRACTION RESULTS:
+{results_block}
+
+Respond with ONLY this JSON (use null for note when flag is false):
+{{
+  "clinical_benefit":   {{"flag": false, "note": null}},
+  "safety":             {{"flag": false, "note": null}},
+  "cost_effectiveness": {{"flag": false, "note": null}},
+  "budget_impact":      {{"flag": false, "note": null}},
+  "equity_access":      {{"flag": false, "note": null}},
+  "feasibility":        {{"flag": false, "note": null}}
+}}\
+"""
+
+
+def _build_verify_block(merged: dict, criteria_keys: list[str]) -> str:
+    lines = []
+    for key in criteria_keys:
+        entry = merged.get(key, {})
+        lines.append(
+            f"{key}:\n"
+            f"  evidence: {entry.get('evidence', 'N/A')}\n"
+            f"  suggested_score: {entry.get('suggested_score', 5)}/9\n"
+            f"  confidence: {entry.get('confidence', 'low')}"
+        )
+    return "\n\n".join(lines)
+
+
+def _run_verification(
+    client: anthropic.Anthropic,
+    merged: dict,
+    criteria_keys: list[str],
+) -> tuple[dict, dict]:
+    """Single verification call checking score-evidence consistency for all criteria.
+
+    Returns (verification_dict, usage_dict).
+    verification_dict is keyed by criterion_key → {"flag": bool, "note": str|None}.
+    Returns ({}, {}) on any error so verification failure never breaks extraction.
+    """
+    user_message = _VERIFY_USER_TEMPLATE.format(
+        results_block=_build_verify_block(merged, criteria_keys)
+    )
+    for attempt in range(1, 3):
+        prefix = "Respond with ONLY the JSON object.\n\n" if attempt == 2 else ""
+        try:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_VERIFY_TOKENS,
+                system=_VERIFY_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prefix + user_message}],
+            )
+        except Exception:
+            return {}, {}
+
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        try:
+            usage = {
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+            }
+            return json.loads(raw), usage
+        except json.JSONDecodeError:
+            if attempt == 2:
+                return {}, {}
+    return {}, {}
+
 
 _SYSTEM_PROMPT = """\
 You are a structured evidence extractor for a decision-support tool used in health \
@@ -46,7 +153,7 @@ CRITERIA:
 
 For each criterion return EXACTLY these fields:
 - "evidence": 1–2 sentence plain-language summary using ONLY the provided text
-- "citation": closest page number or section heading found in the text (e.g. "Page 12" or "Section 4.2")
+- "citation": the [Page N] marker that precedes the relevant text in the excerpt (e.g. "Page 12"). Use ONLY the [Page N] tags injected at the start of each page — do not use any numbers found inside the document body text.
 - "suggested_score": integer 1–9 (1=strongly unfavourable for adoption, 5=neutral/unclear, 9=strongly favourable)
 - "rationale": one sentence grounded only in the extracted evidence
 - "confidence": "high" if text clearly addresses criterion | "medium" if partially | "low" if not clearly addressed
@@ -90,12 +197,23 @@ def _call_claude(
             if attempt == 2
             else ""
         )
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prefix + user_message}],
-        )
+        try:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                system=_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prefix + user_message}],
+            )
+        except anthropic.APITimeoutError as exc:
+            raise ExtractionError(f"Claude API timed out for {chunk_label}: {exc}") from exc
+        except anthropic.APIConnectionError as exc:
+            raise ExtractionError(
+                f"Could not connect to Claude API for {chunk_label}: {exc}"
+            ) from exc
+        except anthropic.RateLimitError as exc:
+            raise ExtractionError(f"Claude API rate limit reached: {exc}") from exc
+        except anthropic.APIError as exc:
+            raise ExtractionError(f"Claude API error for {chunk_label}: {exc}") from exc
         raw = response.content[0].text.strip()
 
         # Strip accidental markdown fences if the model adds them despite instructions
@@ -222,7 +340,8 @@ def extract_evidence(pages: list[dict], criteria_defs: list[dict]) -> dict:
         start_page = chunk[0]["page_number"]
         end_page = chunk[-1]["page_number"]
         chunk_text = "\n\n".join(
-            f"[Page {p['page_number']}]\n{p['text']}" for p in chunk if p["text"]
+            f"[Page {p['page_number']}]\n{_strip_barcode_footers(p['text'])}"
+            for p in chunk if p["text"]
         )
         chunk_label = f"pages {start_page}–{end_page}"
 
@@ -240,13 +359,24 @@ def extract_evidence(pages: list[dict], criteria_defs: list[dict]) -> dict:
         chunk_results.append(result)
 
     merged = _merge_results(chunk_results, criteria_keys)
+
+    # Verification pass: one additional call checking score–evidence consistency.
+    # Fails gracefully — a verification error never aborts extraction.
+    verification, verify_usage = _run_verification(client, merged, criteria_keys)
+    for key in criteria_keys:
+        v = verification.get(key, {})
+        merged[key]["verification_flag"] = bool(v.get("flag", False))
+        merged[key]["verification_note"] = v.get("note") or None
+
+    verify_in  = verify_usage.get("input_tokens", 0)
+    verify_out = verify_usage.get("output_tokens", 0)
     merged["_token_usage"] = {
-        "input_tokens": total_input_tokens,
-        "output_tokens": total_output_tokens,
+        "input_tokens":  total_input_tokens + verify_in,
+        "output_tokens": total_output_tokens + verify_out,
         "chunks": len(chunks),
         "approx_cost_usd": round(
-            (total_input_tokens / 1_000_000) * 3.0
-            + (total_output_tokens / 1_000_000) * 15.0,
+            ((total_input_tokens + verify_in)  / 1_000_000) * 3.0
+            + ((total_output_tokens + verify_out) / 1_000_000) * 15.0,
             4,
         ),
     }

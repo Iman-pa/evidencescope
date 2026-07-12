@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useRef } from "react";
-import { callAnalyze, callOverride } from "./api.js";
+import { useState, useCallback, useRef } from "react";
+import { callAnalyze, callOverride, callCompare } from "./api.js";
 
 // ---------------------------------------------------------------------------
 // EvidenceScope — evidence-linked MCDA for health technology review
@@ -32,13 +32,23 @@ export default function EvidenceScope() {
   const [criteriaResults, setCriteriaResults] = useState(null);
   const [currentScores, setCurrentScores]   = useState({});
   const [currentWeights, setCurrentWeights] = useState(
-    Object.fromEntries(CRITERIA.map((c) => [c.key, 100 / CRITERIA.length]))
+    // Use Math.round so slider display (which also rounds) matches stored value.
+    // Math.round(100/6) = 17 each → sum 102, honest: "normalized automatically".
+    Object.fromEntries(CRITERIA.map((c) => [c.key, Math.round(100 / CRITERIA.length)]))
   );
   const [weightedScore, setWeightedScore]   = useState(null); // [0,1] from server
   const [auditTrail, setAuditTrail]         = useState([]);
+  const [aiSuggestedScores, setAiSuggestedScores] = useState({});
   const [overrideSet, setOverrideSet]       = useState(new Set());
   const [expanded, setExpanded]             = useState(null);
   const [errorMsg, setErrorMsg]             = useState("");
+  const [analysisLabel, setAnalysisLabel]   = useState("");
+
+  // Saved analyses for cross-drug comparison
+  const [savedAnalyses, setSavedAnalyses]   = useState([]); // [{id, label, scores, weights}]
+  const [compareResult, setCompareResult]   = useState(null);
+  const [showCompare, setShowCompare]       = useState(false);
+  const [compareError, setCompareError]     = useState("");
 
   // -------------------------------------------------------------------------
   // File selection
@@ -76,18 +86,26 @@ export default function EvidenceScope() {
     setCriteriaResults(null);
     setAnalysisId(null);
     setAuditTrail([]);
+    setAiSuggestedScores({});
     setOverrideSet(new Set());
+    setCompareResult(null);
+    setCompareError("");
 
     try {
       const data = await callAnalyze(selectedFiles);
 
       setAnalysisId(data.analysis_id);
+      setAnalysisLabel(data.label || "");
       setCriteriaResults(data.criteria_results);
       setCurrentScores(data.current_scores);
-      // Backend initialises weights as 1.0 each (equal); map to percentage display
+      setAiSuggestedScores(data.current_scores);
+      // Backend now initialises weights at 100/N each (same percentage scale).
+      // Round to integers so slider display matches stored value exactly —
+      // prevents the mismatch where slider showed 17 but stored value was 16.667,
+      // causing the next slider interaction to send 17 vs 1.0 for other criteria.
       const totalW = Object.values(data.current_weights).reduce((a, b) => a + b, 0);
       const pctWeights = Object.fromEntries(
-        CRITERIA.map((c) => [c.key, (data.current_weights[c.key] / totalW) * 100])
+        CRITERIA.map((c) => [c.key, Math.round((data.current_weights[c.key] / totalW) * 100)])
       );
       setCurrentWeights(pctWeights);
       setWeightedScore(data.initial_weighted_score);
@@ -148,6 +166,35 @@ export default function EvidenceScope() {
   const totalWeight = Object.values(currentWeights).reduce((a, b) => a + Number(b), 0);
 
   // -------------------------------------------------------------------------
+  // Save current analysis for cross-drug comparison
+  // -------------------------------------------------------------------------
+
+  const handleSaveForComparison = () => {
+    if (!analysisId || !criteriaResults) return;
+    const label = analysisLabel || analysisId.slice(0, 8);
+    // Avoid duplicate saves
+    if (savedAnalyses.some((a) => a.id === analysisId)) return;
+    setSavedAnalyses((prev) => [
+      ...prev,
+      { id: analysisId, label, scores: { ...currentScores }, weights: { ...currentWeights } },
+    ]);
+  };
+
+  const handleCompare = useCallback(async () => {
+    if (savedAnalyses.length < 2) return;
+    setCompareError("");
+    try {
+      const result = await callCompare(
+        savedAnalyses.map((a) => ({ analysis_id: a.id, label: a.label }))
+      );
+      setCompareResult(result);
+      setShowCompare(true);
+    } catch (err) {
+      setCompareError(`Comparison failed: ${err.message}`);
+    }
+  }, [savedAnalyses]);
+
+  // -------------------------------------------------------------------------
   // Export scorecard (uses server audit trail)
   // -------------------------------------------------------------------------
 
@@ -161,6 +208,15 @@ export default function EvidenceScope() {
       const r = criteriaResults[c.key] || {};
       md += `| ${c.label} | ${Math.round(currentWeights[c.key])}% | ${currentScores[c.key]} | ${(r.evidence || "").replace(/\|/g, "/")} | ${r.citation || "n/a"} |\n`;
     });
+    // Verification flags
+    const flaggedCriteria = CRITERIA.filter((c) => criteriaResults[c.key]?.verification_flag);
+    if (flaggedCriteria.length > 0) {
+      md += `\n## Verification Flags (score–evidence mismatches detected by AI)\n\n`;
+      flaggedCriteria.forEach((c) => {
+        const r = criteriaResults[c.key];
+        md += `- **${c.label}**: ${r.verification_note || "score may not match evidence"}\n`;
+      });
+    }
     if (auditTrail.length > 0) {
       md += `\n## Audit Trail (human overrides)\n\n`;
       auditTrail.forEach((entry) => {
@@ -297,7 +353,14 @@ export default function EvidenceScope() {
           )}
 
           {phase === "uploading" && (
-            <div style={styles.emptyState}>Extracting evidence per criterion…</div>
+            <div style={styles.emptyState}>
+              <div style={{ marginBottom: "8px", fontSize: "14px", color: TEAL, fontWeight: 500 }}>
+                Reading document and extracting evidence…
+              </div>
+              <div style={{ fontSize: "12px", color: "#9A9A8E" }}>
+                This typically takes 60–90 seconds. The model is reading each page and scoring all six criteria.
+              </div>
+            </div>
           )}
 
           {criteriaResults &&
@@ -308,7 +371,6 @@ export default function EvidenceScope() {
               const criterionTrail = auditTrail.filter(
                 (e) => e.criterion_key === c.key && e.field === "score"
               );
-              const lastOverride = criterionTrail[criterionTrail.length - 1];
 
               return (
                 <div key={c.key} style={styles.criterionCard}>
@@ -321,6 +383,14 @@ export default function EvidenceScope() {
                       <div style={styles.criterionHint}>{c.hint}</div>
                     </div>
                     <div style={styles.criterionScoreCluster}>
+                      {r.verification_flag && (
+                        <span
+                          style={styles.verificationFlag}
+                          title={r.verification_note || "Score may not match evidence"}
+                        >
+                          ⚑ review
+                        </span>
+                      )}
                       <span
                         style={{
                           ...styles.confidenceTag,
@@ -360,7 +430,7 @@ export default function EvidenceScope() {
                         <label style={styles.sliderLabel}>Weight (%)</label>
                         <input
                           type="range"
-                          min="1"
+                          min="0"
                           max="100"
                           step="1"
                           value={Math.round(currentWeights[c.key])}
@@ -368,15 +438,29 @@ export default function EvidenceScope() {
                           onPointerUp={(e) => handleWeightCommit(c.key, Number(e.target.value))}
                           style={styles.slider}
                         />
-                        <span style={styles.sliderValue}>{Math.round(currentWeights[c.key])}</span>
+                        <span style={styles.sliderValue}>
+                          {totalWeight > 0
+                            ? (currentWeights[c.key] / totalWeight * 100).toFixed(1)
+                            : "0.0"}%
+                        </span>
                       </div>
 
-                      {lastOverride && (
-                        <div style={styles.overrideNote}>
-                          Human override: {lastOverride.old_value} → {lastOverride.new_value} at{" "}
-                          {new Date(lastOverride.changed_at).toLocaleTimeString()}
+                      {r.verification_flag && r.verification_note && (
+                        <div style={styles.verificationNote}>
+                          ⚑ {r.verification_note}
                         </div>
                       )}
+                      {aiSuggestedScores[c.key] !== undefined && (
+                        <div style={styles.aiSuggestionNote}>
+                          AI suggestion: {aiSuggestedScores[c.key]}
+                        </div>
+                      )}
+                      {criterionTrail.map((entry, i) => (
+                        <div key={i} style={styles.overrideNote}>
+                          Override {i + 1}: {entry.old_value} → {entry.new_value} at{" "}
+                          {new Date(entry.changed_at).toLocaleTimeString()}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -386,11 +470,108 @@ export default function EvidenceScope() {
           {criteriaResults && (
             <div style={styles.footerRow}>
               <div style={styles.weightTotal}>
-                Weights sum to {Math.round(totalWeight)}% (normalized automatically)
+                Weights normalized to 100% for scoring
               </div>
-              <button style={styles.exportButton} onClick={exportReport}>
-                Export scorecard (.md)
-              </button>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  style={{
+                    ...styles.ghostButton,
+                    fontSize: "12px",
+                    padding: "8px 14px",
+                    opacity: savedAnalyses.some((a) => a.id === analysisId) ? 0.45 : 1,
+                  }}
+                  onClick={handleSaveForComparison}
+                  disabled={savedAnalyses.some((a) => a.id === analysisId)}
+                  title="Save this analysis to compare against others"
+                >
+                  {savedAnalyses.some((a) => a.id === analysisId) ? "Saved" : "Save for comparison"}
+                </button>
+                <button style={styles.exportButton} onClick={exportReport}>
+                  Export scorecard (.md)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Cross-drug comparison panel */}
+          {savedAnalyses.length >= 2 && (
+            <div style={{ marginTop: "20px", borderTop: `1px solid ${LINE}`, paddingTop: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", letterSpacing: "0.1em", color: "#9A9A8E" }}>
+                  03 — CROSS-DRUG COMPARISON ({savedAnalyses.length} saved)
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  {savedAnalyses.map((a) => (
+                    <span key={a.id} style={{ fontSize: "11px", color: TEAL, fontFamily: "'IBM Plex Mono', monospace", background: TEAL_DIM, padding: "2px 8px", borderRadius: "3px" }}>
+                      {a.label}
+                    </span>
+                  ))}
+                  <button style={{ ...styles.primaryButton, fontSize: "12px", padding: "7px 14px" }} onClick={handleCompare}>
+                    Run comparison
+                  </button>
+                  <button style={{ ...styles.ghostButton, fontSize: "12px", padding: "7px 10px" }} onClick={() => { setSavedAnalyses([]); setCompareResult(null); setShowCompare(false); }}>
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {compareError && <div style={styles.errorBox}>{compareError}</div>}
+
+              {showCompare && compareResult && (
+                <div>
+                  {/* Overall ranking */}
+                  <div style={{ marginBottom: "10px" }}>
+                    {compareResult.ranking.map((item) => (
+                      <div key={item.analysis_id} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: "#9A9A8E", width: "20px" }}>#{item.rank}</span>
+                        <span style={{ fontWeight: 600, fontSize: "13px", minWidth: "120px" }}>{item.label}</span>
+                        <div style={{ flex: 1, background: LINE, borderRadius: "3px", height: "8px" }}>
+                          <div style={{ width: `${(item.topsis_score * 100).toFixed(1)}%`, background: TEAL, height: "8px", borderRadius: "3px" }} />
+                        </div>
+                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: TEAL }}>{(item.topsis_score * 100).toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Per-criterion table */}
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: `1px solid ${LINE}`, color: "#7A7A70", fontWeight: 500 }}>Criterion</th>
+                          {compareResult.ranking.map((item) => (
+                            <th key={item.analysis_id} style={{ textAlign: "center", padding: "6px 8px", borderBottom: `1px solid ${LINE}`, color: TEAL, fontWeight: 600 }}>
+                              #{item.rank} {item.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {compareResult.criteria.map((key) => {
+                          const cLabel = CRITERIA.find((c) => c.key === key)?.label || key;
+                          const vals = compareResult.per_criterion[key] || {};
+                          const scores = Object.values(vals);
+                          const maxScore = Math.max(...scores);
+                          return (
+                            <tr key={key} style={{ borderBottom: `1px solid ${LINE}` }}>
+                              <td style={{ padding: "6px 8px", color: "#5B5B54" }}>{cLabel}</td>
+                              {compareResult.ranking.map((item) => {
+                                const score = vals[item.label] ?? "—";
+                                const isTop = score === maxScore;
+                                return (
+                                  <td key={item.analysis_id} style={{ textAlign: "center", padding: "6px 8px", fontFamily: "'IBM Plex Mono', monospace", fontWeight: isTop ? 600 : 400, color: isTop ? TEAL : INK }}>
+                                    {typeof score === "number" ? score.toFixed(0) : score}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -679,8 +860,35 @@ const styles = {
     width: "24px",
     textAlign: "right",
   },
-  overrideNote: {
+  verificationFlag: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: "10px",
+    letterSpacing: "0.04em",
+    color: "#9C3A00",
+    background: "#FEF0E7",
+    border: "1px solid #F4C09A",
+    borderRadius: "4px",
+    padding: "2px 6px",
+    cursor: "help",
+  },
+  verificationNote: {
     marginTop: "8px",
+    fontSize: "11.5px",
+    color: "#9C3A00",
+    fontFamily: "'IBM Plex Mono', monospace",
+    background: "#FEF0E7",
+    border: "1px solid #F4C09A",
+    borderRadius: "4px",
+    padding: "6px 8px",
+  },
+  aiSuggestionNote: {
+    marginTop: "8px",
+    fontSize: "11.5px",
+    color: TEAL,
+    fontFamily: "'IBM Plex Mono', monospace",
+  },
+  overrideNote: {
+    marginTop: "4px",
     fontSize: "11.5px",
     color: AMBER,
     fontFamily: "'IBM Plex Mono', monospace",

@@ -327,3 +327,124 @@ class TestOverride:
         })
         assert resp.status_code == 400
         assert "1" in resp.json()["detail"] and "9" in resp.json()["detail"]
+
+    def test_weight_zero_allowed(self, client, analysis_id, tmp_path, monkeypatch):
+        """Setting a weight to 0 is now allowed (excludes that criterion from scoring)."""
+        monkeypatch.setenv("AUDIT_DB_PATH", str(tmp_path / "test.db"))
+        resp = client.post("/override", json={
+            "analysis_id": analysis_id,
+            "criterion_key": "equity_access",
+            "field": "weight",
+            "new_value": 0.0,
+        })
+        assert resp.status_code == 200
+        # Weighted score should still be a valid number (computed from remaining 5 criteria)
+        ws = resp.json()["updated_weighted_score"]
+        assert isinstance(ws, float)
+        assert 0.0 <= ws <= 1.0
+
+    def test_all_weights_zero_rejected(self, client, analysis_id, tmp_path, monkeypatch):
+        """Setting the last non-zero weight to 0 must be rejected."""
+        monkeypatch.setenv("AUDIT_DB_PATH", str(tmp_path / "test.db"))
+        # Set 5 criteria to 0 first
+        for key in ["safety", "cost_effectiveness", "budget_impact", "equity_access", "feasibility"]:
+            client.post("/override", json={
+                "analysis_id": analysis_id,
+                "criterion_key": key,
+                "field": "weight",
+                "new_value": 0.0,
+            })
+        # Now try to zero out the last one
+        resp = client.post("/override", json={
+            "analysis_id": analysis_id,
+            "criterion_key": "clinical_benefit",
+            "field": "weight",
+            "new_value": 0.0,
+        })
+        assert resp.status_code == 400
+        assert "non-zero" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /compare tests
+# ---------------------------------------------------------------------------
+
+class TestCompare:
+    def _make_analysis(self, client, monkeypatch, tmp_path, label="Drug A"):
+        monkeypatch.setenv("AUDIT_DB_PATH", str(tmp_path / "test.db"))
+        if not _TEST_PDF.exists():
+            pytest.skip(f"Test PDF not found: {_TEST_PDF}")
+        # Inject label via filename trick: use label as the stem
+        with patch("app.main.extract_evidence", return_value=_fake_extraction_result()):
+            with open(_TEST_PDF, "rb") as f:
+                resp = client.post(
+                    "/analyze",
+                    files=[("files", (f"{label}.pdf", f, "application/pdf"))],
+                )
+        assert resp.status_code == 200
+        return resp.json()["analysis_id"]
+
+    def test_compare_two_analyses_returns_ranking(self, client, monkeypatch, tmp_path):
+        """Two analyses → response has ranking list of length 2 with topsis_scores."""
+        aid1 = self._make_analysis(client, monkeypatch, tmp_path, "DrugA")
+        aid2 = self._make_analysis(client, monkeypatch, tmp_path, "DrugB")
+
+        resp = client.post("/compare", json={
+            "comparisons": [
+                {"analysis_id": aid1, "label": "DrugA"},
+                {"analysis_id": aid2, "label": "DrugB"},
+            ]
+        })
+        assert resp.status_code == 200
+        body = resp.json()
+
+        assert "ranking" in body
+        assert "per_criterion" in body
+        assert "criteria" in body
+        assert len(body["ranking"]) == 2
+        assert body["criteria"] == list(CRITERIA)  # correct order
+
+        for item in body["ranking"]:
+            assert "rank" in item
+            assert "label" in item
+            assert "topsis_score" in item
+            assert 0.0 <= item["topsis_score"] <= 1.0
+
+        # Ranks are 1 and 2
+        ranks = sorted(item["rank"] for item in body["ranking"])
+        assert ranks == [1, 2]
+
+    def test_compare_per_criterion_contains_all_labels(self, client, monkeypatch, tmp_path):
+        """per_criterion maps each criterion to a dict keyed by label."""
+        aid1 = self._make_analysis(client, monkeypatch, tmp_path, "Alpha")
+        aid2 = self._make_analysis(client, monkeypatch, tmp_path, "Beta")
+
+        resp = client.post("/compare", json={
+            "comparisons": [
+                {"analysis_id": aid1, "label": "Alpha"},
+                {"analysis_id": aid2, "label": "Beta"},
+            ]
+        })
+        body = resp.json()
+        for key in CRITERIA:
+            assert key in body["per_criterion"]
+            scores = body["per_criterion"][key]
+            assert "Alpha" in scores
+            assert "Beta" in scores
+
+    def test_compare_single_analysis_returns_422(self, client, monkeypatch, tmp_path):
+        """Comparison with fewer than 2 analyses is rejected."""
+        aid = self._make_analysis(client, monkeypatch, tmp_path, "Solo")
+        resp = client.post("/compare", json={
+            "comparisons": [{"analysis_id": aid, "label": "Solo"}]
+        })
+        assert resp.status_code == 422
+
+    def test_compare_unknown_id_returns_404(self, client):
+        resp = client.post("/compare", json={
+            "comparisons": [
+                {"analysis_id": "does-not-exist", "label": "X"},
+                {"analysis_id": "also-not-there", "label": "Y"},
+            ]
+        })
+        assert resp.status_code == 404

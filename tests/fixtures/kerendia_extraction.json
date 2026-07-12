@@ -1,0 +1,46 @@
+{
+  "_note": "Kerendia (finerenone) extraction results from SR0893r-Kerendia_combined.pdf, run 2026-07-11. Used as fixture for verification pass tests — no API re-extraction needed.",
+  "clinical_benefit": {
+    "evidence": "The FINEARTS-HF trial (n=6,001, median follow-up 32 months) demonstrated that finerenone likely results in a clinically meaningful reduction in CV death and worsening HF events compared to placebo plus SOC.",
+    "citation": "Page 4",
+    "suggested_score": 6,
+    "rationale": "Finerenone showed a statistically significant reduction in the primary composite endpoint, supporting a moderate to high benefit.",
+    "confidence": "high"
+  },
+  "safety": {
+    "evidence": "Finerenone results in an increase in events of hyperkalemia and worsening of renal function compared to placebo; however, these events were mostly mild-to-moderate and manageable with dose adjustment.",
+    "citation": "Pages 4-5, Page 23",
+    "suggested_score": 5,
+    "rationale": "Known class-effect harms exist but are manageable, placing safety at neutral on the 1-9 scale.",
+    "confidence": "high"
+  },
+  "cost_effectiveness": {
+    "evidence": "The CDA-AMC base case ICER for finerenone plus SOC versus SOC alone was $77,195 per QALY gained, with incremental costs driven primarily by the drug acquisition cost.",
+    "citation": "Pages 5-6",
+    "suggested_score": 4,
+    "rationale": "An ICER of $77,195/QALY exceeds many payer thresholds without price reduction, placing cost-effectiveness below neutral.",
+    "confidence": "high"
+  },
+  "budget_impact": {
+    "evidence": "CDA-AMC estimates the budget impact of reimbursing finerenone will be approximately $107 million over the first 3 years if reimbursed for the Health Canada indicated population.",
+    "citation": "Page 6",
+    "suggested_score": 3,
+    "rationale": "A $107 million 3-year budget impact represents a substantial payer burden, scoring below neutral.",
+    "confidence": "high"
+  },
+  "equity_access": {
+    "evidence": "Clinical experts and patient groups noted disparities in access to care in Canada, including inequality in diagnostic testing availability and geographic barriers for rural populations.",
+    "citation": "Page 41",
+    "suggested_score": 4,
+    "rationale": "Existing access disparities could limit equitable uptake, placing equity slightly below neutral.",
+    "confidence": "high"
+  },
+  "feasibility": {
+    "evidence": "Clinical experts noted that a cardiologist may be required for initial diagnosis, but treatment could be initiated and monitored by general practitioners in most settings.",
+    "citation": "Page 18",
+    "suggested_score": 6,
+    "rationale": "Implementation is feasible with existing infrastructure as GP monitoring is sufficient after specialist initiation.",
+    "confidence": "medium"
+  },
+  "has_conflicts": true
+}

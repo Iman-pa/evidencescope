@@ -1,0 +1,165 @@
+{
+  "clinical_benefit": {
+    "evidence": "In the 3 pivotal RCTs, lebrikizumab induction therapy showed clinically relevant improvements in EASI, IGA, and reduced itch versus placebo at 16 weeks. However, the updated NMA and MAICs were inconclusive due to serious imprecision and methodological limitations, with no firm conclusions drawable regarding comparative effects versus abrocitinib, upadacitinib, or dupilumab; upadacitinib may be favoured over lebrikizumab for EASI change at Week 16.",
+    "citation": "Page 4",
+    "suggested_score": 4,
+    "rationale": "While lebrikizumab demonstrated benefit over placebo, comparative effectiveness versus relevant active comparators remains highly uncertain due to methodological limitations in indirect evidence.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "safety": {
+    "evidence": "During the induction period, the proportion of patients experiencing TEAEs was broadly similar between lebrikizumab and placebo groups, with conjunctivitis being the most notable harm, occurring in 4.8%–11.0% of lebrikizumab-treated patients versus 0%–3.5% in placebo groups (moderate certainty). SAEs were infrequent and the certainty of evidence for SAEs was rated very low due to short follow-up and indirectness, with the overall safety profile appearing generally manageable.",
+    "citation": "Page 18",
+    "suggested_score": 6,
+    "rationale": "Lebrikizumab's safety profile is broadly acceptable with low SAE rates, though the elevated risk of conjunctivitis is a notable and consistent harm across all three trials, and uncertainty around long-term SAEs remains due to very low certainty evidence.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "cost_effectiveness": {
+    "evidence": "There is no robust evidence to suggest Ebglyss provides greater health benefit than relevant comparators, and CDA-AMC states that if no differences in health outcomes exist, the total cost of Ebglyss should not exceed that of the least costly advanced treatment. The submitted economic analysis was based on NMA evidence deemed insufficient to show a difference between Ebglyss and comparators for EASI 75 response.",
+    "citation": "Page 5",
+    "suggested_score": 2,
+    "rationale": "Without demonstrated superior efficacy, the high annual cost of Ebglyss ($37,048 in year 1) relative to comparators makes a favourable cost-effectiveness conclusion unsupportable based on available evidence.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "budget_impact": {
+    "evidence": "CDA-AMC estimates the budget impact of reimbursing Ebglyss will be approximately $127 million over the first 3 years compared to current comparator spending, with an estimated total expenditure of $472 million on Ebglyss over this period; the incremental budget impact is predicted to exceed $40 million in both year 1 and year 3.",
+    "citation": "Page 5",
+    "suggested_score": 2,
+    "rationale": "The large predicted incremental budget impact exceeding $40 million annually raises significant concerns about economic feasibility for payers.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "equity_access": {
+    "evidence": "The study populations in the RCTs and LTE were predominantly White, with lower representation of Black/African American, Asian, and Indigenous groups, potentially limiting generalizability. Access to specialist care and phototherapy is limited in rural and remote Canadian regions, and although dupilumab is the only publicly funded biologic, patients without private insurance face barriers to lebrikizumab access, raising concerns about socioeconomic inequities.",
+    "citation": "Page 51",
+    "suggested_score": 4,
+    "rationale": "Limited racialized-group representation in trials and existing access barriers related to geography and insurance coverage suggest that adoption of lebrikizumab without targeted access measures may not meaningfully improve equity for underserved populations.",
+    "confidence": "high",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "feasibility": {
+    "evidence": "Lebrikizumab is administered via subcutaneous injection and can be prescribed by dermatologists, allergists, pediatricians, or clinical immunologists, or by primary care physicians with sufficient expertise in areas lacking specialist access. Clinical experts noted that biologic treatments require less frequent monitoring visits than conventional immunosuppressants, reducing patient and system burden.",
+    "citation": "Page 15",
+    "suggested_score": 6,
+    "rationale": "The subcutaneous self-injection route and less frequent monitoring requirements relative to conventional immunosuppressants support feasible implementation, though specialist prescribing requirements may limit access in some regions.",
+    "confidence": "medium",
+    "verification_flag": false,
+    "verification_note": null
+  },
+  "conflicts": {
+    "clinical_benefit": [
+      {
+        "evidence": "In the 3 pivotal RCTs, lebrikizumab induction therapy showed clinically relevant improvements in EASI, IGA, and reduced itch versus placebo at 16 weeks. However, the updated NMA and MAICs were inconclusive due to serious imprecision and methodological limitations, with no firm conclusions drawable regarding comparative effects versus abrocitinib, upadacitinib, or dupilumab; upadacitinib may be favoured over lebrikizumab for EASI change at Week 16.",
+        "citation": "Page 4",
+        "suggested_score": 4,
+        "rationale": "While lebrikizumab demonstrated benefit over placebo, comparative effectiveness versus relevant active comparators remains highly uncertain due to methodological limitations in indirect evidence.",
+        "confidence": "high",
+        "verification_flag": false,
+        "verification_note": null
+      },
+      {
+        "evidence": "Lebrikizumab demonstrated statistically significant improvements over placebo across three RCTs at week 16 on IGA 0/1 response (43.1% vs. 12.7% in ADvocate 1), EASI 75 response (58.8% vs. 16.2% in ADvocate 1), and Pruritus NRS ≥4-point reduction (45.9% vs. 13.0% in ADvocate 1), all with high certainty of evidence. Indirect comparisons via NMA showed no statistically significant difference between lebrikizumab and dupilumab or abrocitinib 100 mg on most outcomes, though upadacitinib 30 mg and abrocitinib 200 mg were favoured over lebrikizumab on several endpoints.",
+        "citation": "Page 17",
+        "suggested_score": 6,
+        "rationale": "Lebrikizumab shows clear, high-certainty benefit over placebo, but indirect comparisons suggest it may be less effective than some existing comparators (upadacitinib 30 mg, abrocitinib 200 mg), limiting its relative advantage over current standard of care.",
+        "confidence": "high"
+      },
+      {
+        "evidence": "The unanchored MAICs suggested lebrikizumab may be favoured over abrocitinib 100 mg for EASI 75 response, IGA 0 or 1, and EASI 90, and over dupilumab for IGA 0 or 1 at Week 52. However, these findings were affected by imprecision and methodological limitations, resulting in very low confidence in comparative estimates versus upadacitinib, abrocitinib, or dupilumab, and no definitive conclusions can be drawn.",
+        "citation": "Page 52",
+        "suggested_score": 4,
+        "rationale": "While some point estimates favour lebrikizumab over certain comparators, pervasive methodological limitations and wide confidence intervals across all indirect comparisons prevent firm conclusions about comparative clinical benefit.",
+        "confidence": "high"
+      },
+      {
+        "evidence": "Across all analyses comparing lebrikizumab to dupilumab, upadacitinib, and abrocitinib, results were consistently associated with wide confidence intervals that commonly crossed the null, precluding definitive conclusions about relative efficacy. In the sponsor's economic analysis, lebrikizumab was dominated (i.e., more costly and less effective) and did not appear on the cost-effectiveness frontier.",
+        "citation": "Page 54",
+        "suggested_score": 3,
+        "rationale": "Lebrikizumab was dominated by comparators in the economic model and no definitive conclusions on comparative effectiveness could be drawn due to substantial imprecision and methodological limitations.",
+        "confidence": "high"
+      }
+    ],
+    "safety": [
+      {
+        "evidence": "During the induction period, the proportion of patients experiencing TEAEs was broadly similar between lebrikizumab and placebo groups, with conjunctivitis being the most notable harm, occurring in 4.8%–11.0% of lebrikizumab-treated patients versus 0%–3.5% in placebo groups (moderate certainty). SAEs were infrequent and the certainty of evidence for SAEs was rated very low due to short follow-up and indirectness, with the overall safety profile appearing generally manageable.",
+        "citation": "Page 18",
+        "suggested_score": 6,
+        "rationale": "Lebrikizumab's safety profile is broadly acceptable with low SAE rates, though the elevated risk of conjunctivitis is a notable and consistent harm across all three trials, and uncertainty around long-term SAEs remains due to very low certainty evidence.",
+        "confidence": "high",
+        "verification_flag": false,
+        "verification_note": null
+      },
+      {
+        "evidence": "Across trials, proportions with at least one AE ranged from 38.4% to 75.6% for lebrikizumab versus 34.4% to 63.4% for placebo; SAE rates were generally low (0–2.4%). Conjunctivitis was a notable adverse event of special interest, and two deaths occurred in the LTE (ADjoin) every 2 weeks group, one due to natural causes and one due to metastatic pancreatic carcinoma.",
+        "citation": "Page 39",
+        "suggested_score": 5,
+        "rationale": "The safety profile shows generally low SAE rates and AEs leading to discontinuation, but conjunctivitis is a recurrent adverse event of special interest and the overall TEAE burden was higher in lebrikizumab groups than placebo across multiple trials.",
+        "confidence": "high"
+      },
+      {
+        "evidence": "No new safety signals were identified in the ADjoin LTE study, and the frequency of adverse events was generally consistent with the pivotal trials. The updated NMA and MAICs generally favoured lebrikizumab over active comparators for overall AEs, though important methodological limitations limit confidence in these findings.",
+        "citation": "Page 51",
+        "suggested_score": 6,
+        "rationale": "The absence of new safety signals and a trend favouring lebrikizumab on overall AEs are modestly reassuring, but methodological limitations and imprecision in indirect comparisons constrain confidence in the safety profile relative to comparators.",
+        "confidence": "high"
+      }
+    ],
+    "cost_effectiveness": [
+      {
+        "evidence": "There is no robust evidence to suggest Ebglyss provides greater health benefit than relevant comparators, and CDA-AMC states that if no differences in health outcomes exist, the total cost of Ebglyss should not exceed that of the least costly advanced treatment. The submitted economic analysis was based on NMA evidence deemed insufficient to show a difference between Ebglyss and comparators for EASI 75 response.",
+        "citation": "Page 5",
+        "suggested_score": 2,
+        "rationale": "Without demonstrated superior efficacy, the high annual cost of Ebglyss ($37,048 in year 1) relative to comparators makes a favourable cost-effectiveness conclusion unsupportable based on available evidence.",
+        "confidence": "high",
+        "verification_flag": false,
+        "verification_note": null
+      },
+      {
+        "evidence": "The sponsor's cost-utility analysis found that lebrikizumab plus TCS was dominated by abrocitinib 100 mg and was associated with fewer total QALYs than all comparators except dupilumab; it was also more costly than all comparators apart from upadacitinib 30 mg and dupilumab. CDA-AMC could not address the key issue of uncertain comparative efficacy in its base case due to a lack of robust direct and indirect evidence.",
+        "citation": "Page 53",
+        "suggested_score": 2,
+        "rationale": "Lebrikizumab plus TCS is dominated by at least one comparator and generates fewer QALYs than most alternatives at higher cost, indicating an unfavourable cost-effectiveness profile.",
+        "confidence": "high"
+      },
+      {
+        "evidence": "In the sponsor's economic analysis, lebrikizumab was dominated (i.e., more costly and less effective) and did not appear on the cost-effectiveness frontier. If decision-makers determine there are no differences in health outcomes between lebrikizumab and relevant comparators, then the total cost of lebrikizumab plus TCS to the health system should not exceed that of the least costly advanced treatment for the indicated population.",
+        "citation": "Page 54",
+        "suggested_score": 2,
+        "rationale": "Lebrikizumab was dominated in the sponsor's own economic analysis, indicating it is both more costly and less effective than comparators, making a favourable cost-effectiveness conclusion unsupportable.",
+        "confidence": "high"
+      }
+    ],
+    "budget_impact": [
+      {
+        "evidence": "CDA-AMC estimates the budget impact of reimbursing Ebglyss will be approximately $127 million over the first 3 years compared to current comparator spending, with an estimated total expenditure of $472 million on Ebglyss over this period; the incremental budget impact is predicted to exceed $40 million in both year 1 and year 3.",
+        "citation": "Page 5",
+        "suggested_score": 2,
+        "rationale": "The large predicted incremental budget impact exceeding $40 million annually raises significant concerns about economic feasibility for payers.",
+        "confidence": "high",
+        "verification_flag": false,
+        "verification_note": null
+      },
+      {
+        "evidence": "CDA-AMC estimated that by year 3 of reimbursement, 83,239 patients would be eligible for lebrikizumab, with 6,576 patients expected to receive it. The estimated incremental budget impact of reimbursing lebrikizumab is predicted to be approximately $127 million over the first 3 years, with an expected expenditure of $472 million on lebrikizumab.",
+        "citation": "Page 55",
+        "suggested_score": 3,
+        "rationale": "The estimated incremental budget impact of $127 million over three years and total lebrikizumab expenditure of $472 million represent a substantial financial burden to public drug plans.",
+        "confidence": "high"
+      }
+    ]
+  },
+  "has_conflicts": true,
+  "_token_usage": {
+    "input_tokens": 65673,
+    "output_tokens": 5401,
+    "chunks": 5,
+    "approx_cost_usd": 0.278
+  }
+}

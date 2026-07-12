@@ -16,6 +16,20 @@ export async function callAnalyze(files) {
   return resp.json();
 }
 
+export async function callCompare(comparisons) {
+  // comparisons: [{analysis_id, label}, ...]
+  const resp = await fetch("/compare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comparisons }),
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.detail || `Server error ${resp.status}`);
+  }
+  return resp.json();
+}
+
 export async function callOverride({ analysisId, criterionKey, field, newValue }) {
   const resp = await fetch("/override", {
     method: "POST",

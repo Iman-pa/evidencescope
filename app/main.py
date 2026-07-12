@@ -5,6 +5,7 @@ Endpoints
 GET  /health       — liveness check
 POST /analyze      — upload HTA PDFs, extract evidence, return initial scores
 POST /override     — record a human score/weight change, recompute total
+POST /compare      — rank multiple saved analyses using TOPSIS
 """
 
 import tempfile
@@ -12,15 +13,20 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
+import matplotlib
+import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
+from pyDecision.algorithm import topsis_method
 
 from app.audit import get_audit_trail, log_override
 from app.extraction import ExtractionError, extract_evidence
 from app.models import CRITERIA, CRITERIA_DEFS
 from app.parsing import parse_pdf
 from app.scoring import compute_weighted_score
+
+matplotlib.use("Agg")  # non-interactive backend — suppress any plot output from pyDecision
 
 app = FastAPI(title="EvidenceScope API")
 
@@ -39,13 +45,15 @@ app.add_middleware(
 # In-memory state store  {analysis_id: AnalysisState}
 # Holds the extraction results + current scores/weights for each session.
 # Override history is persisted separately in SQLite (app/audit.py).
+# NOTE: this state is lost on server restart — by design for this prototype.
 # ---------------------------------------------------------------------------
 
-_EQUAL_WEIGHTS: dict[str, float] = {k: 1.0 for k in CRITERIA}
+# Initialised on the same percentage scale the frontend uses (0–100).
+_EQUAL_WEIGHTS: dict[str, float] = {k: 100 / len(CRITERIA) for k in CRITERIA}
 
 
 class AnalysisState:
-    __slots__ = ("criteria_results", "current_scores", "current_weights", "has_conflicts")
+    __slots__ = ("criteria_results", "current_scores", "current_weights", "has_conflicts", "label")
 
     def __init__(
         self,
@@ -53,11 +61,13 @@ class AnalysisState:
         current_scores: dict[str, float],
         current_weights: dict[str, float],
         has_conflicts: bool,
+        label: str = "",
     ):
         self.criteria_results = criteria_results
         self.current_scores = current_scores
         self.current_weights = current_weights
         self.has_conflicts = has_conflicts
+        self.label = label
 
 
 _analyses: dict[str, AnalysisState] = {}
@@ -101,6 +111,10 @@ async def analyze(files: list[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="At least one PDF file is required.")
 
+    # Derive label from first filename (stem, no extension)
+    first_name = files[0].filename or ""
+    label = Path(first_name).stem if first_name else "Untitled"
+
     all_pages: list[list[dict]] = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for upload in files:
@@ -122,19 +136,21 @@ async def analyze(files: list[UploadFile] = File(...)):
 
     merged = _merge_pages(all_pages)
     total_chars = sum(len(p["text"]) for p in merged)
-    if total_chars == 0:
+    if total_chars < 200:
         raise HTTPException(
             status_code=400,
             detail=(
-                "No text could be extracted from the uploaded PDFs. "
-                "Files may be scanned images without an OCR layer."
+                "Very little text could be extracted from the uploaded PDFs "
+                f"({total_chars} characters total). "
+                "The file may be a scanned image without an OCR layer, "
+                "or may be corrupt. Please check the file and try again."
             ),
         )
 
     try:
         extraction = extract_evidence(merged, CRITERIA_DEFS)
     except ExtractionError as exc:
-        raise HTTPException(status_code=500, detail=f"Evidence extraction failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Evidence extraction failed: {exc}")
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -157,10 +173,12 @@ async def analyze(files: list[UploadFile] = File(...)):
         current_scores=current_scores,
         current_weights=current_weights,
         has_conflicts=has_conflicts,
+        label=label,
     )
 
     return {
         "analysis_id": analysis_id,
+        "label": label,
         "criteria_results": criteria_results,
         "current_scores": current_scores,
         "current_weights": current_weights,
@@ -184,9 +202,9 @@ class OverrideRequest(BaseModel):
 
     @field_validator("new_value")
     @classmethod
-    def new_value_must_be_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("new_value must be positive.")
+    def new_value_must_be_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("new_value must be >= 0.")
         return v
 
 
@@ -209,6 +227,13 @@ def override(req: OverrideRequest):
         state.current_scores[req.criterion_key] = req.new_value
     else:
         old_value = state.current_weights[req.criterion_key]
+        # Guard: at least one criterion must retain a non-zero weight.
+        prospective = {**state.current_weights, req.criterion_key: req.new_value}
+        if all(v == 0 for v in prospective.values()):
+            raise HTTPException(
+                status_code=400,
+                detail="At least one criterion weight must be non-zero.",
+            )
         state.current_weights[req.criterion_key] = req.new_value
 
     log_override(
@@ -230,4 +255,103 @@ def override(req: OverrideRequest):
         "new_value": req.new_value,
         "updated_weighted_score": round(updated_score, 6),
         "audit_trail": audit_trail,
+    }
+
+
+# ---------------------------------------------------------------------------
+# /compare — multi-drug TOPSIS ranking
+# ---------------------------------------------------------------------------
+
+class CompareItem(BaseModel):
+    analysis_id: str
+    label: str = ""  # optional override for the analysis label
+
+
+class CompareRequest(BaseModel):
+    comparisons: list[CompareItem]
+
+    @field_validator("comparisons")
+    @classmethod
+    def need_at_least_two(cls, v: list) -> list:
+        if len(v) < 2:
+            raise ValueError("At least 2 analyses are required for comparison.")
+        return v
+
+
+@app.post("/compare")
+def compare(req: CompareRequest):
+    """Rank multiple saved analyses using TOPSIS (pyDecision).
+
+    Uses the current scores and weights from each stored AnalysisState.
+    Weights are averaged across all analyses for a neutral comparison baseline.
+    """
+    resolved: list[tuple[str, str, AnalysisState]] = []
+    for item in req.comparisons:
+        state = _analyses.get(item.analysis_id)
+        if state is None:
+            raise HTTPException(
+                status_code=404, detail=f"Analysis not found: {item.analysis_id}"
+            )
+        label = item.label or state.label or item.analysis_id[:8]
+        resolved.append((item.analysis_id, label, state))
+
+    # Score matrix: rows = alternatives, cols = criteria (in CRITERIA order)
+    matrix = np.array(
+        [[state.current_scores.get(k, 5.0) for k in CRITERIA] for _, _, state in resolved],
+        dtype=float,
+    )
+
+    # Average weights across analyses, then normalize to sum to 1
+    avg_weights = np.array(
+        [
+            np.mean([state.current_weights.get(k, 100.0 / len(CRITERIA)) for _, _, state in resolved])
+            for k in CRITERIA
+        ],
+        dtype=float,
+    )
+    weight_sum = avg_weights.sum()
+    if weight_sum == 0:
+        avg_weights = np.ones(len(CRITERIA)) / len(CRITERIA)
+    else:
+        avg_weights = avg_weights / weight_sum
+
+    criterion_type = ["+"] * len(CRITERIA)  # all criteria: higher score = better for adoption
+
+    topsis_scores = topsis_method(
+        matrix, avg_weights.tolist(), criterion_type, graph=False, verbose=False
+    )
+
+    # TOPSIS degenerates to NaN when all alternatives have identical scores
+    # (ideal == anti-ideal → division by zero). Fall back to weighted sum in that case.
+    if any(np.isnan(s) for s in topsis_scores):
+        topsis_scores = np.array([
+            compute_weighted_score(state.current_scores, state.current_weights)
+            for _, _, state in resolved
+        ])
+
+    ranking = sorted(
+        [
+            {
+                "rank": 0,
+                "analysis_id": aid,
+                "label": label,
+                "topsis_score": round(float(topsis_scores[i]), 4),
+            }
+            for i, (aid, label, _) in enumerate(resolved)
+        ],
+        key=lambda x: x["topsis_score"],
+        reverse=True,
+    )
+    for i, item in enumerate(ranking):
+        item["rank"] = i + 1
+
+    per_criterion = {
+        k: {label: float(state.current_scores.get(k, 5.0)) for _, label, state in resolved}
+        for k in CRITERIA
+    }
+
+    return {
+        "ranking": ranking,
+        "per_criterion": per_criterion,
+        "criteria": CRITERIA,
     }
