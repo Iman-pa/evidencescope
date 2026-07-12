@@ -42,5 +42,18 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 
+# Data — PDF files are not committed (too large, available from CDA-AMC)
+# .gitkeep placeholder files in data/ ARE tracked to preserve folder structure
+data/input/*.pdf
+data/holdout/*.pdf
+
+# Audit/temp scripts generated during development
+scripts/full_history.txt
+scripts/audit_history.py
+scripts/audit_files.py
+scripts/ebglyss_holdout.txt
+scripts/imaavy_holdout.txt
+scripts/kerendia_holdout.txt
+
 # Misc
 *.log
