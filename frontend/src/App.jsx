@@ -1,10 +1,22 @@
-import { useState, useCallback, useRef } from "react";
-import { callAnalyze, callOverride, callCompare } from "./api.js";
+import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  callAnalyze,
+  callOverride,
+  callCompare,
+  getStoredDemoKey,
+  clearStoredDemoKey,
+  verifyDemoAccess,
+  AuthError,
+  RateLimitError,
+} from "./api.js";
+import PasswordGate from "./PasswordGate.jsx";
+import { COLORS, RADIUS, FONT_STACK, globalStyleSheet } from "./theme.js";
 
 // ---------------------------------------------------------------------------
 // EvidenceScope — evidence-linked MCDA for health technology review
-// Design: paper background, Source Serif 4 / IBM Plex font pairing,
-// teal = AI-suggested, amber = human-overridden. Preserved from prototype.
+// Styled to match the personal-portfolio design system: warm sage/amber
+// palette, Inter type, 14px radius cards. Teal→primary (AI-suggested) and
+// amber (human-overridden) semantics from the original design are preserved.
 // ---------------------------------------------------------------------------
 
 const CRITERIA = [
@@ -17,12 +29,50 @@ const CRITERIA = [
 ];
 
 // Convert backend [0,1] normalized weighted score to [1,9] display scale.
-// Algebraically equivalent to Σ(wᵢ/Σw)·sᵢ — matches prototype's display formula.
 function toDisplayScore(backendVal) {
   return (backendVal * 8 + 1).toFixed(2);
 }
 
-export default function EvidenceScope() {
+// ---------------------------------------------------------------------------
+// Top-level shell: gates the app behind an access code, restores an existing
+// session from sessionStorage, and drops back to the gate if the stored code
+// turns out to be invalid or expired.
+// ---------------------------------------------------------------------------
+
+export default function App() {
+  const [unlocked, setUnlocked] = useState(() => Boolean(getStoredDemoKey()));
+
+  useEffect(() => {
+    const storedKey = getStoredDemoKey();
+    if (!storedKey) return;
+    let cancelled = false;
+    verifyDemoAccess(storedKey).catch(() => {
+      if (!cancelled) {
+        clearStoredDemoKey();
+        setUnlocked(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleAuthError = useCallback(() => {
+    clearStoredDemoKey();
+    setUnlocked(false);
+  }, []);
+
+  return (
+    <>
+      <style>{globalStyleSheet}</style>
+      {unlocked ? (
+        <EvidenceScope onAuthError={handleAuthError} />
+      ) : (
+        <PasswordGate onUnlock={() => setUnlocked(true)} />
+      )}
+    </>
+  );
+}
+
+function EvidenceScope({ onAuthError }) {
   const [phase, setPhase] = useState("idle"); // idle | uploading | done | error
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -42,6 +92,7 @@ export default function EvidenceScope() {
   const [overrideSet, setOverrideSet]       = useState(new Set());
   const [expanded, setExpanded]             = useState(null);
   const [errorMsg, setErrorMsg]             = useState("");
+  const [rateLimitMsg, setRateLimitMsg]     = useState("");
   const [analysisLabel, setAnalysisLabel]   = useState("");
 
   // Saved analyses for cross-drug comparison
@@ -51,13 +102,29 @@ export default function EvidenceScope() {
   const [compareError, setCompareError]     = useState("");
 
   // -------------------------------------------------------------------------
+  // Shared handler for auth/rate-limit errors that any API call can surface
+  // -------------------------------------------------------------------------
+
+  const handleApiError = (err, fallbackSetter) => {
+    if (err instanceof AuthError) {
+      onAuthError();
+      return;
+    }
+    if (err instanceof RateLimitError) {
+      setRateLimitMsg(err.message);
+      return;
+    }
+    fallbackSetter(err.message || "Something went wrong. Please try again.");
+  };
+
+  // -------------------------------------------------------------------------
   // File selection
   // -------------------------------------------------------------------------
 
   const applyFiles = (files) => {
     const pdfs = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
     if (pdfs.length === 0) {
-      setErrorMsg("Please select PDF files.");
+      setErrorMsg("Please select PDF files — other file types aren't supported.");
       return;
     }
     setSelectedFiles(pdfs);
@@ -83,6 +150,7 @@ export default function EvidenceScope() {
     }
     setPhase("uploading");
     setErrorMsg("");
+    setRateLimitMsg("");
     setCriteriaResults(null);
     setAnalysisId(null);
     setAuditTrail([]);
@@ -111,10 +179,19 @@ export default function EvidenceScope() {
       setWeightedScore(data.initial_weighted_score);
       setPhase("done");
     } catch (err) {
+      if (err instanceof AuthError) {
+        onAuthError();
+        return;
+      }
+      if (err instanceof RateLimitError) {
+        setRateLimitMsg(err.message);
+        setPhase("error");
+        return;
+      }
       setErrorMsg(err.message || "Something went wrong analysing this report.");
       setPhase("error");
     }
-  }, [selectedFiles]);
+  }, [selectedFiles, onAuthError]);
 
   // -------------------------------------------------------------------------
   // Slider handlers — optimistic local update, server commit on pointer-up
@@ -138,7 +215,7 @@ export default function EvidenceScope() {
       setAuditTrail(data.audit_trail);
       setOverrideSet((prev) => new Set([...prev, key]));
     } catch (err) {
-      setErrorMsg(`Override failed: ${err.message}`);
+      handleApiError(err, (msg) => setErrorMsg(`Override failed: ${msg}`));
     }
   };
 
@@ -159,7 +236,7 @@ export default function EvidenceScope() {
       setAuditTrail(data.audit_trail);
       setOverrideSet((prev) => new Set([...prev, key + "_weight"]));
     } catch (err) {
-      setErrorMsg(`Override failed: ${err.message}`);
+      handleApiError(err, (msg) => setErrorMsg(`Override failed: ${msg}`));
     }
   };
 
@@ -190,7 +267,7 @@ export default function EvidenceScope() {
       setCompareResult(result);
       setShowCompare(true);
     } catch (err) {
-      setCompareError(`Comparison failed: ${err.message}`);
+      handleApiError(err, (msg) => setCompareError(`Comparison failed: ${msg}`));
     }
   }, [savedAnalyses]);
 
@@ -239,10 +316,8 @@ export default function EvidenceScope() {
 
   return (
     <div style={styles.page}>
-      <style>{fontImports}</style>
-
       <header style={styles.header}>
-        <div style={styles.headerInner}>
+        <div className="es-header-inner">
           <div>
             <div style={styles.eyebrow}>EVIDENCE-LINKED MCDA · HEALTH TECHNOLOGY REVIEW</div>
             <h1 style={styles.title}>EvidenceScope</h1>
@@ -250,7 +325,7 @@ export default function EvidenceScope() {
               Every score traces back to evidence, or to a documented human decision. Nothing in between.
             </p>
           </div>
-          <div style={styles.scoreBadge}>
+          <div className="es-card" style={styles.scoreBadge}>
             <div style={styles.scoreBadgeLabel}>Weighted Score</div>
             <div style={styles.scoreBadgeValue}>
               {weightedScore !== null ? toDisplayScore(weightedScore) : "—"}
@@ -260,7 +335,7 @@ export default function EvidenceScope() {
         </div>
       </header>
 
-      <main style={styles.main}>
+      <main className="es-main">
         {/* ---------------------------------------------------------------- */}
         {/* 01 — SOURCE DOCUMENT                                             */}
         {/* ---------------------------------------------------------------- */}
@@ -269,6 +344,7 @@ export default function EvidenceScope() {
 
           {/* Drop zone */}
           <div
+            className="es-card"
             style={{
               ...styles.dropZone,
               ...(isDragOver ? styles.dropZoneActive : {}),
@@ -315,13 +391,15 @@ export default function EvidenceScope() {
 
           <div style={styles.inputRow}>
             <button
-              style={{ ...styles.primaryButton, opacity: phase === "uploading" ? 0.6 : 1 }}
+              className="es-btn es-btn-primary"
+              style={styles.primaryButton}
               onClick={handleAnalyze}
               disabled={phase === "uploading"}
             >
               {phase === "uploading" ? "Extracting evidence…" : "Analyze report"}
             </button>
             <button
+              className="es-btn es-btn-ghost"
               style={styles.ghostButton}
               onClick={() => { setSelectedFiles([]); if (fileInputRef.current) fileInputRef.current.value = ""; }}
               disabled={phase === "uploading"}
@@ -330,7 +408,11 @@ export default function EvidenceScope() {
             </button>
           </div>
 
-          {(phase === "error" || errorMsg) && (
+          {rateLimitMsg && (
+            <div style={styles.rateLimitBox}>{rateLimitMsg}</div>
+          )}
+
+          {(phase === "error" || errorMsg) && !rateLimitMsg && (
             <div style={styles.errorBox}>{errorMsg}</div>
           )}
 
@@ -354,11 +436,13 @@ export default function EvidenceScope() {
 
           {phase === "uploading" && (
             <div style={styles.emptyState}>
-              <div style={{ marginBottom: "8px", fontSize: "14px", color: TEAL, fontWeight: 500 }}>
+              <div style={{ marginBottom: "8px", fontSize: "14px", color: COLORS.primary, fontWeight: 600 }}>
                 Reading document and extracting evidence…
               </div>
-              <div style={{ fontSize: "12px", color: "#9A9A8E" }}>
-                This typically takes 60–90 seconds. The model is reading each page and scoring all six criteria.
+              <div style={{ fontSize: "12.5px", color: COLORS.inkFaint, lineHeight: 1.6 }}>
+                This typically takes 60–90 seconds while the model reads each page and scores
+                all six criteria. It can take longer on the very first request if the server
+                had been asleep.
               </div>
             </div>
           )}
@@ -373,7 +457,7 @@ export default function EvidenceScope() {
               );
 
               return (
-                <div key={c.key} style={styles.criterionCard}>
+                <div key={c.key} className="es-card" style={styles.criterionCard}>
                   <div
                     style={styles.criterionHeaderRow}
                     onClick={() => setExpanded(isOpen ? null : c.key)}
@@ -472,13 +556,13 @@ export default function EvidenceScope() {
               <div style={styles.weightTotal}>
                 Weights normalized to 100% for scoring
               </div>
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 <button
+                  className="es-btn es-btn-ghost"
                   style={{
                     ...styles.ghostButton,
-                    fontSize: "12px",
+                    fontSize: "13px",
                     padding: "8px 14px",
-                    opacity: savedAnalyses.some((a) => a.id === analysisId) ? 0.45 : 1,
                   }}
                   onClick={handleSaveForComparison}
                   disabled={savedAnalyses.some((a) => a.id === analysisId)}
@@ -486,7 +570,7 @@ export default function EvidenceScope() {
                 >
                   {savedAnalyses.some((a) => a.id === analysisId) ? "Saved" : "Save for comparison"}
                 </button>
-                <button style={styles.exportButton} onClick={exportReport}>
+                <button className="es-btn es-btn-dark" style={styles.exportButton} onClick={exportReport}>
                   Export scorecard (.md)
                 </button>
               </div>
@@ -495,21 +579,21 @@ export default function EvidenceScope() {
 
           {/* Cross-drug comparison panel */}
           {savedAnalyses.length >= 2 && (
-            <div style={{ marginTop: "20px", borderTop: `1px solid ${LINE}`, paddingTop: "16px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", letterSpacing: "0.1em", color: "#9A9A8E" }}>
+            <div style={{ marginTop: "20px", borderTop: `1px solid ${COLORS.cardBorder}`, paddingTop: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", flexWrap: "wrap", gap: "8px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 600, letterSpacing: "0.06em", color: COLORS.inkFaint }}>
                   03 — CROSS-DRUG COMPARISON ({savedAnalyses.length} saved)
                 </div>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                   {savedAnalyses.map((a) => (
-                    <span key={a.id} style={{ fontSize: "11px", color: TEAL, fontFamily: "'IBM Plex Mono', monospace", background: TEAL_DIM, padding: "2px 8px", borderRadius: "3px" }}>
+                    <span key={a.id} style={{ fontSize: "12px", fontWeight: 500, color: COLORS.primary, background: COLORS.primaryTint, padding: "3px 10px", borderRadius: "999px" }}>
                       {a.label}
                     </span>
                   ))}
-                  <button style={{ ...styles.primaryButton, fontSize: "12px", padding: "7px 14px" }} onClick={handleCompare}>
+                  <button className="es-btn es-btn-primary" style={{ fontSize: "13px", padding: "8px 16px" }} onClick={handleCompare}>
                     Run comparison
                   </button>
-                  <button style={{ ...styles.ghostButton, fontSize: "12px", padding: "7px 10px" }} onClick={() => { setSavedAnalyses([]); setCompareResult(null); setShowCompare(false); }}>
+                  <button className="es-btn es-btn-ghost" style={{ fontSize: "13px", padding: "8px 12px" }} onClick={() => { setSavedAnalyses([]); setCompareResult(null); setShowCompare(false); }}>
                     Clear
                   </button>
                 </div>
@@ -522,25 +606,25 @@ export default function EvidenceScope() {
                   {/* Overall ranking */}
                   <div style={{ marginBottom: "10px" }}>
                     {compareResult.ranking.map((item) => (
-                      <div key={item.analysis_id} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: "#9A9A8E", width: "20px" }}>#{item.rank}</span>
-                        <span style={{ fontWeight: 600, fontSize: "13px", minWidth: "120px" }}>{item.label}</span>
-                        <div style={{ flex: 1, background: LINE, borderRadius: "3px", height: "8px" }}>
-                          <div style={{ width: `${(item.topsis_score * 100).toFixed(1)}%`, background: TEAL, height: "8px", borderRadius: "3px" }} />
+                      <div key={item.analysis_id} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 600, color: COLORS.inkFaint, width: "22px" }}>#{item.rank}</span>
+                        <span style={{ fontWeight: 600, fontSize: "14px", minWidth: "120px" }}>{item.label}</span>
+                        <div style={{ flex: 1, background: COLORS.primaryTint, borderRadius: "999px", height: "8px" }}>
+                          <div style={{ width: `${(item.topsis_score * 100).toFixed(1)}%`, background: COLORS.primary, height: "8px", borderRadius: "999px" }} />
                         </div>
-                        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "11px", color: TEAL }}>{(item.topsis_score * 100).toFixed(1)}%</span>
+                        <span style={{ fontSize: "12px", fontWeight: 600, color: COLORS.primary, width: "48px", textAlign: "right" }}>{(item.topsis_score * 100).toFixed(1)}%</span>
                       </div>
                     ))}
                   </div>
 
                   {/* Per-criterion table */}
                   <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                       <thead>
                         <tr>
-                          <th style={{ textAlign: "left", padding: "6px 8px", borderBottom: `1px solid ${LINE}`, color: "#7A7A70", fontWeight: 500 }}>Criterion</th>
+                          <th style={{ textAlign: "left", padding: "8px", borderBottom: `1px solid ${COLORS.cardBorder}`, color: COLORS.inkMuted, fontWeight: 500 }}>Criterion</th>
                           {compareResult.ranking.map((item) => (
-                            <th key={item.analysis_id} style={{ textAlign: "center", padding: "6px 8px", borderBottom: `1px solid ${LINE}`, color: TEAL, fontWeight: 600 }}>
+                            <th key={item.analysis_id} style={{ textAlign: "center", padding: "8px", borderBottom: `1px solid ${COLORS.cardBorder}`, color: COLORS.primary, fontWeight: 600 }}>
                               #{item.rank} {item.label}
                             </th>
                           ))}
@@ -553,13 +637,13 @@ export default function EvidenceScope() {
                           const scores = Object.values(vals);
                           const maxScore = Math.max(...scores);
                           return (
-                            <tr key={key} style={{ borderBottom: `1px solid ${LINE}` }}>
-                              <td style={{ padding: "6px 8px", color: "#5B5B54" }}>{cLabel}</td>
+                            <tr key={key} style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                              <td style={{ padding: "8px", color: COLORS.inkMuted }}>{cLabel}</td>
                               {compareResult.ranking.map((item) => {
                                 const score = vals[item.label] ?? "—";
                                 const isTop = score === maxScore;
                                 return (
-                                  <td key={item.analysis_id} style={{ textAlign: "center", padding: "6px 8px", fontFamily: "'IBM Plex Mono', monospace", fontWeight: isTop ? 600 : 400, color: isTop ? TEAL : INK }}>
+                                  <td key={item.analysis_id} style={{ textAlign: "center", padding: "8px", fontWeight: isTop ? 700 : 400, color: isTop ? COLORS.primary : COLORS.ink }}>
                                     {typeof score === "number" ? score.toFixed(0) : score}
                                   </td>
                                 );
@@ -586,336 +670,281 @@ export default function EvidenceScope() {
 }
 
 // ---------------------------------------------------------------------------
-// Fonts (unchanged from prototype)
-// ---------------------------------------------------------------------------
-
-const fontImports = `
-  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
-`;
-
-// ---------------------------------------------------------------------------
-// Design tokens (unchanged from prototype)
-// ---------------------------------------------------------------------------
-
-const INK       = "#1E2328";
-const PAPER     = "#FAF9F6";
-const PAPER_DIM = "#F1EFE9";
-const TEAL      = "#1F6F78";
-const TEAL_DIM  = "#E4EFEE";
-const AMBER     = "#9C6B12";
-const AMBER_DIM = "#F5ECD9";
-const LINE      = "#DEDAD1";
-
-// ---------------------------------------------------------------------------
-// Styles (all values copied verbatim from prototype; only dropZone is new)
+// Styles — portfolio design system (see theme.js for shared tokens)
 // ---------------------------------------------------------------------------
 
 const styles = {
   page: {
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    background: PAPER,
-    color: INK,
+    fontFamily: FONT_STACK,
+    background: COLORS.bg,
+    color: COLORS.ink,
     minHeight: "100%",
-    padding: "0",
   },
   header: {
-    borderBottom: `1px solid ${LINE}`,
-    padding: "28px 32px 24px",
-  },
-  headerInner: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    flexWrap: "wrap",
-    gap: "16px",
-    maxWidth: "1100px",
-    margin: "0 auto",
+    padding: "32px 32px 28px",
   },
   eyebrow: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: "11px",
-    letterSpacing: "0.12em",
-    color: TEAL,
-    marginBottom: "8px",
+    fontSize: "12px",
+    fontWeight: 600,
+    letterSpacing: "0.1em",
+    color: COLORS.primary,
+    marginBottom: "10px",
   },
   title: {
-    fontFamily: "'Source Serif 4', serif",
-    fontWeight: 600,
+    fontFamily: FONT_STACK,
+    fontWeight: 700,
     fontSize: "34px",
     margin: 0,
     letterSpacing: "-0.01em",
   },
   subtitle: {
-    fontSize: "14px",
-    color: "#5B5B54",
-    marginTop: "6px",
+    fontSize: "15px",
+    lineHeight: 1.6,
+    color: COLORS.inkMuted,
+    marginTop: "8px",
     maxWidth: "480px",
   },
   scoreBadge: {
-    border: `1px solid ${LINE}`,
-    borderRadius: "6px",
-    padding: "10px 18px",
+    padding: "14px 22px",
     textAlign: "right",
-    background: PAPER_DIM,
   },
   scoreBadgeLabel: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: "10px",
+    fontSize: "11px",
+    fontWeight: 600,
     letterSpacing: "0.08em",
-    color: "#7A7A70",
+    color: COLORS.inkFaint,
   },
   scoreBadgeValue: {
-    fontFamily: "'Source Serif 4', serif",
-    fontSize: "28px",
-    fontWeight: 600,
-    color: TEAL,
+    fontFamily: FONT_STACK,
+    fontSize: "30px",
+    fontWeight: 700,
+    color: COLORS.primary,
   },
   scoreBadgeMax: {
-    fontSize: "14px",
-    color: "#9A9A8E",
-  },
-  main: {
-    maxWidth: "1100px",
-    margin: "0 auto",
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.3fr)",
-    gap: "28px",
-    padding: "28px 32px",
+    fontSize: "15px",
+    fontWeight: 500,
+    color: COLORS.inkFaint,
   },
   panelLabel: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: "11px",
-    letterSpacing: "0.1em",
-    color: "#9A9A8E",
-    marginBottom: "10px",
+    fontSize: "12px",
+    fontWeight: 600,
+    letterSpacing: "0.08em",
+    color: COLORS.inkFaint,
+    marginBottom: "12px",
   },
   inputPanel:   { display: "flex", flexDirection: "column" },
   resultsPanel: { display: "flex", flexDirection: "column" },
 
-  // Drop zone replaces the textarea from the prototype
   dropZone: {
     minHeight: "200px",
     padding: "36px 24px",
-    border: `2px dashed ${LINE}`,
-    borderRadius: "6px",
-    background: "#fff",
+    borderStyle: "dashed",
+    borderWidth: "2px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
     textAlign: "center",
-    transition: "border-color 0.15s, background 0.15s",
     userSelect: "none",
   },
   dropZoneActive: {
-    borderColor: TEAL,
-    background: TEAL_DIM,
+    borderColor: COLORS.primary,
+    background: COLORS.primaryTint,
   },
   dropZoneIcon: {
     fontSize: "28px",
-    color: TEAL,
+    color: COLORS.primary,
     marginBottom: "10px",
   },
   dropZoneText: {
-    fontSize: "14px",
-    fontWeight: 500,
-    color: INK,
+    fontSize: "15px",
+    fontWeight: 600,
+    color: COLORS.ink,
     marginBottom: "6px",
   },
   dropZoneHint: {
-    fontSize: "12px",
-    color: "#8A8A7E",
+    fontSize: "13px",
+    color: COLORS.inkFaint,
   },
 
-  inputRow: { display: "flex", gap: "10px", marginTop: "12px" },
-  primaryButton: {
-    background: TEAL,
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    padding: "10px 18px",
-    fontSize: "13px",
-    fontWeight: 500,
-    cursor: "pointer",
-    fontFamily: "'IBM Plex Sans', sans-serif",
-  },
-  ghostButton: {
-    background: "transparent",
-    color: INK,
-    border: `1px solid ${LINE}`,
-    borderRadius: "6px",
-    padding: "10px 18px",
-    fontSize: "13px",
-    cursor: "pointer",
-    fontFamily: "'IBM Plex Sans', sans-serif",
-  },
+  inputRow: { display: "flex", gap: "10px", marginTop: "14px" },
+  primaryButton: { padding: "12px 20px", fontSize: "14px" },
+  ghostButton:   { padding: "12px 20px", fontSize: "14px" },
   errorBox: {
-    marginTop: "12px",
-    padding: "10px 12px",
-    background: "#FBEAEA",
-    border: "1px solid #E8B4B4",
-    borderRadius: "6px",
-    fontSize: "13px",
-    color: "#8A2C2C",
+    marginTop: "14px",
+    padding: "12px 14px",
+    background: COLORS.terracottaTint,
+    border: `1px solid ${COLORS.terracotta}55`,
+    borderRadius: RADIUS,
+    fontSize: "14px",
+    color: "#8A4A24",
+  },
+  rateLimitBox: {
+    marginTop: "14px",
+    padding: "12px 14px",
+    background: COLORS.blueTint,
+    border: `1px solid ${COLORS.blue}55`,
+    borderRadius: RADIUS,
+    fontSize: "14px",
+    color: COLORS.blue,
   },
   noteBox: {
-    marginTop: "14px",
-    fontSize: "12px",
-    color: "#8A8A7E",
-    lineHeight: 1.5,
-    borderLeft: `2px solid ${LINE}`,
-    paddingLeft: "10px",
+    marginTop: "16px",
+    fontSize: "13px",
+    color: COLORS.inkFaint,
+    lineHeight: 1.6,
+    borderLeft: `2px solid ${COLORS.cardBorder}`,
+    paddingLeft: "12px",
   },
   emptyState: {
-    fontSize: "13px",
-    color: "#9A9A8E",
-    padding: "24px",
-    border: `1px dashed ${LINE}`,
-    borderRadius: "6px",
+    fontSize: "14px",
+    color: COLORS.inkFaint,
+    padding: "28px 24px",
+    border: `1px dashed ${COLORS.cardBorder}`,
+    borderRadius: RADIUS,
     textAlign: "center",
   },
   criterionCard: {
-    border: `1px solid ${LINE}`,
-    borderRadius: "6px",
-    marginBottom: "10px",
-    background: "#fff",
+    marginBottom: "12px",
     overflow: "hidden",
   },
   criterionHeaderRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "14px 16px",
+    padding: "16px 18px",
     cursor: "pointer",
+    gap: "12px",
+    flexWrap: "wrap",
   },
-  criterionLabel: { fontWeight: 600, fontSize: "14.5px" },
-  criterionHint:  { fontSize: "12px", color: "#8A8A7E", marginTop: "2px" },
+  criterionLabel: { fontWeight: 600, fontSize: "15.5px" },
+  criterionHint:  { fontSize: "13px", color: COLORS.inkFaint, marginTop: "3px" },
   criterionScoreCluster: { display: "flex", alignItems: "center", gap: "10px" },
   confidenceTag: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: "10px",
-    letterSpacing: "0.05em",
-    color: "#7A7A70",
-    border: `1px solid ${LINE}`,
-    borderRadius: "4px",
-    padding: "2px 6px",
+    fontSize: "11px",
+    fontWeight: 600,
+    letterSpacing: "0.03em",
+    color: COLORS.inkMuted,
+    border: `1px solid ${COLORS.cardBorder}`,
+    borderRadius: "6px",
+    padding: "3px 7px",
     textTransform: "uppercase",
   },
-  confidenceLow: { color: AMBER, borderColor: AMBER },
+  confidenceLow: { color: COLORS.terracotta, borderColor: COLORS.terracotta },
   scorePillAI: {
-    fontFamily: "'Source Serif 4', serif",
-    fontWeight: 600,
+    fontFamily: FONT_STACK,
+    fontWeight: 700,
     fontSize: "16px",
-    color: TEAL,
-    background: TEAL_DIM,
+    color: COLORS.primary,
+    background: COLORS.primaryTint,
     borderRadius: "50%",
-    width: "32px",
-    height: "32px",
+    width: "34px",
+    height: "34px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   scorePillOverridden: {
-    fontFamily: "'Source Serif 4', serif",
-    fontWeight: 600,
+    fontFamily: FONT_STACK,
+    fontWeight: 700,
     fontSize: "16px",
-    color: AMBER,
-    background: AMBER_DIM,
+    color: "#8A6A1E",
+    background: COLORS.amberTint,
     borderRadius: "50%",
-    width: "32px",
-    height: "32px",
+    width: "34px",
+    height: "34px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
   criterionBody: {
-    padding: "0 16px 16px",
-    borderTop: `1px solid ${LINE}`,
+    padding: "0 18px 18px",
+    borderTop: `1px solid ${COLORS.cardBorder}`,
   },
-  evidenceText:  { fontSize: "13.5px", lineHeight: 1.55, marginTop: "12px" },
+  evidenceText:  { fontSize: "14.5px", lineHeight: 1.65, marginTop: "14px" },
   citationStub: {
     display: "inline-block",
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: "10.5px",
-    letterSpacing: "0.04em",
-    color: TEAL,
-    background: TEAL_DIM,
-    padding: "3px 8px",
-    borderRadius: "3px",
-    marginBottom: "10px",
+    fontSize: "12px",
+    fontWeight: 600,
+    letterSpacing: "0.02em",
+    color: COLORS.primary,
+    background: COLORS.primaryTint,
+    padding: "4px 10px",
+    borderRadius: "6px",
+    marginBottom: "12px",
   },
   rationaleText: {
-    fontSize: "12.5px",
-    color: "#5B5B54",
+    fontSize: "13.5px",
+    color: COLORS.inkMuted,
     fontStyle: "italic",
-    marginBottom: "14px",
+    marginBottom: "16px",
+    lineHeight: 1.6,
   },
-  sliderRow:  { display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" },
-  sliderLabel: { fontSize: "12px", color: "#7A7A70", width: "80px", flexShrink: 0 },
-  slider:     { flex: 1, accentColor: TEAL },
+  sliderRow:  { display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" },
+  sliderLabel: { fontSize: "13px", color: COLORS.inkMuted, width: "84px", flexShrink: 0 },
+  slider:     { flex: 1 },
   sliderValue: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: "12px",
-    width: "24px",
+    fontSize: "13px",
+    fontWeight: 600,
+    width: "30px",
     textAlign: "right",
   },
   verificationFlag: {
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: "10px",
-    letterSpacing: "0.04em",
-    color: "#9C3A00",
-    background: "#FEF0E7",
-    border: "1px solid #F4C09A",
-    borderRadius: "4px",
-    padding: "2px 6px",
+    fontSize: "11px",
+    fontWeight: 600,
+    letterSpacing: "0.02em",
+    color: "#9C4A1A",
+    background: COLORS.terracottaTint,
+    border: `1px solid ${COLORS.terracotta}55`,
+    borderRadius: "6px",
+    padding: "3px 8px",
     cursor: "help",
   },
   verificationNote: {
-    marginTop: "8px",
-    fontSize: "11.5px",
-    color: "#9C3A00",
-    fontFamily: "'IBM Plex Mono', monospace",
-    background: "#FEF0E7",
-    border: "1px solid #F4C09A",
-    borderRadius: "4px",
-    padding: "6px 8px",
+    marginTop: "10px",
+    fontSize: "12.5px",
+    color: "#9C4A1A",
+    background: COLORS.terracottaTint,
+    border: `1px solid ${COLORS.terracotta}55`,
+    borderRadius: "8px",
+    padding: "8px 10px",
+    lineHeight: 1.5,
   },
   aiSuggestionNote: {
-    marginTop: "8px",
-    fontSize: "11.5px",
-    color: TEAL,
-    fontFamily: "'IBM Plex Mono', monospace",
+    marginTop: "10px",
+    fontSize: "12.5px",
+    fontWeight: 500,
+    color: COLORS.primary,
   },
   overrideNote: {
-    marginTop: "4px",
-    fontSize: "11.5px",
-    color: AMBER,
-    fontFamily: "'IBM Plex Mono', monospace",
+    marginTop: "6px",
+    fontSize: "12.5px",
+    fontWeight: 500,
+    color: "#8A6A1E",
   },
   footerRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: "8px",
+    marginTop: "10px",
     padding: "12px 4px",
+    flexWrap: "wrap",
+    gap: "10px",
   },
-  weightTotal: { fontSize: "12px", color: "#8A8A7E" },
+  weightTotal: { fontSize: "13px", color: COLORS.inkFaint },
   exportButton: {
-    background: INK,
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    padding: "9px 16px",
-    fontSize: "12.5px",
-    cursor: "pointer",
-    fontFamily: "'IBM Plex Sans', sans-serif",
+    padding: "10px 18px",
+    fontSize: "13.5px",
   },
   footer: {
     textAlign: "center",
-    fontSize: "11.5px",
-    color: "#9A9A8E",
-    padding: "18px",
-    borderTop: `1px solid ${LINE}`,
+    fontSize: "12.5px",
+    color: COLORS.inkFaint,
+    padding: "24px",
+    borderTop: `1px solid ${COLORS.cardBorder}`,
+    lineHeight: 1.6,
   },
 };

@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: evidencescope-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.13
+      # Secrets — set these manually in the Render dashboard (Environment tab),
+      # not here. `sync: false` tells Render to prompt for a value rather than
+      # storing one in this file.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DEMO_ACCESS_CODE
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # Safe defaults — override in the dashboard only if you want different caps.
+      - key: RATE_LIMIT_PER_IP_PER_DAY
+        value: "5"
+      - key: RATE_LIMIT_GLOBAL_PER_DAY
+        value: "30"

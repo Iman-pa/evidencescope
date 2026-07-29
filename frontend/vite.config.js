@@ -9,6 +9,7 @@ export default defineConfig({
       "/analyze": "http://localhost:8001",
       "/override": "http://localhost:8001",
       "/health":   "http://localhost:8001",
+      "/auth":     "http://localhost:8001",
     },
   },
 });

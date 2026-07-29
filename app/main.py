@@ -8,6 +8,7 @@ POST /override     — record a human score/weight change, recompute total
 POST /compare      — rank multiple saved analyses using TOPSIS
 """
 
+import os
 import tempfile
 import uuid
 from pathlib import Path
@@ -15,20 +16,28 @@ from typing import Literal
 
 import matplotlib
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 from pyDecision.algorithm import topsis_method
 
-from app.audit import get_audit_trail, log_override
+from app.audit import get_audit_trail, log_analyze_request, log_override
 from app.extraction import ExtractionError, extract_evidence
 from app.models import CRITERIA, CRITERIA_DEFS
 from app.parsing import parse_pdf
 from app.scoring import compute_weighted_score
+from app.security import enforce_rate_limits, get_client_ip, verify_demo_access
 
 matplotlib.use("Agg")  # non-interactive backend — suppress any plot output from pyDecision
 
 app = FastAPI(title="EvidenceScope API")
+
+# Origins beyond localhost dev (e.g. the deployed Vercel frontend) are supplied
+# via ALLOWED_ORIGINS, a comma-separated list, so this never needs a hardcoded
+# production URL in source.
+_extra_origins = [
+    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,6 +45,7 @@ app.add_middleware(
         "http://localhost:5173",  # Vite default
         "http://localhost:4173",  # Vite preview
         "http://127.0.0.1:5173",
+        *_extra_origins,
     ],
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -105,11 +115,21 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/analyze")
-async def analyze(files: list[UploadFile] = File(...)):
+@app.post("/auth/verify", dependencies=[Depends(verify_demo_access)])
+def verify_access():
+    """Cheap check the frontend's password gate uses to validate a code before
+    revealing the app. No Claude call, no rate limiting — just the header check."""
+    return {"status": "ok"}
+
+
+@app.post("/analyze", dependencies=[Depends(verify_demo_access)])
+async def analyze(request: Request, files: list[UploadFile] = File(...)):
     """Upload one or more HTA PDF files and receive extracted evidence + initial scores."""
     if not files:
         raise HTTPException(status_code=400, detail="At least one PDF file is required.")
+
+    client_ip = get_client_ip(request)
+    enforce_rate_limits(client_ip)
 
     # Derive label from first filename (stem, no extension)
     first_name = files[0].filename or ""
@@ -156,6 +176,9 @@ async def analyze(files: list[UploadFile] = File(...)):
             status_code=500,
             detail=f"Unexpected error during evidence extraction: {type(exc).__name__}: {exc}",
         )
+
+    approx_cost_usd = extraction.get("_token_usage", {}).get("approx_cost_usd", 0.0)
+    log_analyze_request(ip=client_ip, approx_cost_usd=approx_cost_usd)
 
     extraction.pop("_token_usage", None)
     has_conflicts = extraction.pop("has_conflicts", False)

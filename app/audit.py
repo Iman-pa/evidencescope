@@ -35,6 +35,25 @@ CREATE INDEX IF NOT EXISTS idx_overrides_analysis
 ON overrides (analysis_id, changed_at);
 """
 
+# ---------------------------------------------------------------------------
+# analyze_requests — one row per completed /analyze call, used for the demo's
+# per-IP / global daily rate limiting and for cost tracking (see app/security.py).
+# ---------------------------------------------------------------------------
+
+_CREATE_ANALYZE_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS analyze_requests (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip               TEXT    NOT NULL,
+    requested_at     TEXT    NOT NULL,
+    approx_cost_usd  REAL    NOT NULL
+);
+"""
+
+_CREATE_ANALYZE_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS idx_analyze_requests_time
+ON analyze_requests (requested_at, ip);
+"""
+
 
 def _db_path(override: str | None = None) -> str:
     return override or os.environ.get("AUDIT_DB_PATH", _DEFAULT_DB_PATH)
@@ -49,11 +68,13 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 
 def init_db(db_path: str | None = None) -> None:
-    """Create the overrides table and index if they don't already exist."""
+    """Create the overrides/analyze_requests tables and indexes if they don't already exist."""
     path = _db_path(db_path)
     with _connect(path) as conn:
         conn.execute(_CREATE_TABLE_SQL)
         conn.execute(_CREATE_INDEX_SQL)
+        conn.execute(_CREATE_ANALYZE_TABLE_SQL)
+        conn.execute(_CREATE_ANALYZE_INDEX_SQL)
 
 
 def log_override(
@@ -121,3 +142,64 @@ def get_audit_trail(
             (analysis_id,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def log_analyze_request(
+    ip: str,
+    approx_cost_usd: float,
+    db_path: str | None = None,
+) -> int:
+    """Record one completed /analyze call for rate limiting and cost tracking.
+
+    Args:
+        ip:              Client IP the request came from (see app/security.py).
+        approx_cost_usd: Cost of the Claude calls this analysis made.
+        db_path:         Optional path override; defaults to AUDIT_DB_PATH env var.
+
+    Returns:
+        The inserted row's id.
+    """
+    path = _db_path(db_path)
+    init_db(path)
+    requested_at = datetime.now(timezone.utc).isoformat()
+    with _connect(path) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO analyze_requests (ip, requested_at, approx_cost_usd)
+            VALUES (?, ?, ?)
+            """,
+            (ip, requested_at, approx_cost_usd),
+        )
+        return cur.lastrowid
+
+
+def count_analyze_requests(
+    since: datetime,
+    ip: str | None = None,
+    db_path: str | None = None,
+) -> int:
+    """Count /analyze calls logged at or after `since`, optionally scoped to one IP.
+
+    Args:
+        since:   Only count rows with requested_at >= this timestamp.
+        ip:      If given, count only requests from this IP. Otherwise count all.
+        db_path: Optional path override.
+
+    Returns:
+        Matching row count.
+    """
+    path = _db_path(db_path)
+    init_db(path)
+    since_iso = since.isoformat()
+    with _connect(path) as conn:
+        if ip is not None:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM analyze_requests WHERE requested_at >= ? AND ip = ?",
+                (since_iso, ip),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM analyze_requests WHERE requested_at >= ?",
+                (since_iso,),
+            ).fetchone()
+    return row["n"]

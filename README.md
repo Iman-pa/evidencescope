@@ -68,6 +68,71 @@ python -m pytest tests/ -v
 
 All tests mock the Claude API — no API key needed and no cost incurred. Tests that read real PDFs from `data/input/` are skipped automatically if those files are absent.
 
+## Deploying the live demo
+
+The demo deployment is two separate services: the FastAPI backend on Render
+and the React frontend on Vercel. Both are gated behind `DEMO_ACCESS_CODE` and
+a per-IP / global daily analysis cap (see [Demo access control](#demo-access-control)
+below) to keep Claude API usage bounded.
+
+### 1. Backend — Render
+
+1. Push this repo to GitHub if it isn't already there.
+2. Go to [render.com](https://render.com) and sign in (GitHub login is easiest).
+3. **New +** → **Blueprint** → connect this GitHub repo. Render will detect
+   `render.yaml` at the repo root and propose one service, `evidencescope-api`.
+4. Before the first deploy, Render will prompt for the env vars marked
+   `sync: false` in `render.yaml`. Set:
+   - `ANTHROPIC_API_KEY` — your real Claude API key
+   - `DEMO_ACCESS_CODE` — the demo access code (e.g. `EvidenceScope138`)
+   - `ALLOWED_ORIGINS` — leave blank for now; you'll set this after step 2
+     below once you know the Vercel URL (comma-separated if more than one)
+5. Deploy. First build takes a few minutes. Once live, note the backend URL
+   (e.g. `https://evidencescope-api.onrender.com`) — you'll need it for the
+   frontend.
+6. Sanity check: `curl https://<your-backend>.onrender.com/health` should
+   return `{"status":"ok"}`.
+
+**Free-tier notes:**
+- The service spins down after ~15 minutes of inactivity and takes up to
+  ~50 seconds to wake on the next request. The frontend's password gate
+  pings `/health` on load and shows a "waking up" message if the server
+  doesn't respond quickly, so this doesn't look broken — but it does mean
+  the very first analysis after a period of inactivity can take noticeably
+  longer than the usual 60–90 seconds. If a request ever times out for this
+  reason, retrying immediately after works, since the server is warm by then.
+- Analysis state (in-memory) and the SQLite audit log both reset whenever the
+  service restarts or redeploys — this is a known limitation of the current
+  architecture (see below), not specific to Render.
+
+### 2. Frontend — Vercel
+
+1. Go to [vercel.com](https://vercel.com) and sign in.
+2. **Add New** → **Project** → import this same GitHub repo as a **new,
+   separate** Vercel project (don't reuse an existing portfolio project).
+3. When configuring the project:
+   - **Root Directory**: `frontend`
+   - Framework preset: Vite (should be auto-detected)
+   - Build command / output directory: leave the Vite defaults
+4. Add an environment variable: `VITE_API_URL` = the Render backend URL from
+   step 1 (e.g. `https://evidencescope-api.onrender.com`, no trailing slash).
+5. Deploy. Note the resulting URL (e.g. `https://evidencescope.vercel.app`).
+6. Back in Render, set `ALLOWED_ORIGINS` on the backend service to this
+   Vercel URL and redeploy the backend (or trigger a manual restart) so CORS
+   allows requests from it.
+
+### Demo access control
+
+- `POST /analyze` (and the cheap `POST /auth/verify` the frontend's password
+  gate uses to validate a code) require a matching `X-Demo-Key` header when
+  `DEMO_ACCESS_CODE` is set. Unset locally, this check is skipped entirely.
+- Rate limits: `RATE_LIMIT_PER_IP_PER_DAY` (default 5) and
+  `RATE_LIMIT_GLOBAL_PER_DAY` (default 30), both rolling 24h windows, enforced
+  before any Claude API call is made. Hitting either returns a friendly 429
+  with the message "Demo limit reached for today...".
+- Every completed analysis is logged (timestamp, IP, approximate cost) to the
+  same SQLite audit database used for the override trail.
+
 ## Validation
 
 Three real CDA-AMC final reimbursement recommendations (Kerendia, Imaavy, Ebglyss) were run through the full pipeline and compared against the published committee rationale for each criterion. See [validation_report.md](validation_report.md) for findings.
@@ -75,7 +140,7 @@ Three real CDA-AMC final reimbursement recommendations (Kerendia, Imaavy, Ebglys
 ## Known limitations
 
 ### In-memory state
-Analysis state (scores, weights, criteria results) is held in a Python dict in the server process. **It is lost on server restart.** The SQLite audit log persists across restarts, but the analysis itself does not. For the current prototype this is acceptable; a production version would persist analyses to a database.
+Analysis state (scores, weights, criteria results) is held in a Python dict in the server process. **It is lost on server restart.** The SQLite audit log persists across restarts, but the analysis itself does not. For the current prototype this is acceptable; a production version would persist analyses to a database. On the deployed demo (Render free tier), this also means state is lost whenever the service spins down after inactivity and wakes on the next request.
 
 ### Single-session comparison
 Cross-drug comparison (`/compare`) requires all analyses to be in the current server session. If you restart the server between analyzing Drug A and Drug B, you cannot compare them without re-running both analyses.
