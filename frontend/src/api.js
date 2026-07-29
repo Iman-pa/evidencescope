@@ -6,7 +6,9 @@
  * dev proxy forwards to localhost:8001.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+// Trailing slash stripped so `${API_BASE}/health` can never become a
+// double-slash URL if VITE_API_URL was set with one (e.g. ".../onrender.com/").
+const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
 const DEMO_KEY_STORAGE = "evidencescope_demo_key";
 
 export function getStoredDemoKey() {

@@ -105,6 +105,9 @@ export const globalStyleSheet = `
 
   input[type="range"] { accent-color: ${COLORS.primary}; }
 
+  .es-icon-btn { transition: background 0.12s ease, color 0.12s ease; }
+  .es-icon-btn:hover { background: ${COLORS.primaryTint}; color: ${COLORS.primaryDark}; }
+
   ::selection { background: ${COLORS.primaryTint}; color: ${COLORS.primaryDark}; }
 
   /* -------------------------------------------------------------------- */

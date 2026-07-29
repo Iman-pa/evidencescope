@@ -34,9 +34,12 @@ app = FastAPI(title="EvidenceScope API")
 
 # Origins beyond localhost dev (e.g. the deployed Vercel frontend) are supplied
 # via ALLOWED_ORIGINS, a comma-separated list, so this never needs a hardcoded
-# production URL in source.
+# production URL in source. Trailing slashes are stripped — the browser's
+# Origin header never has one, so a stray "/" here would silently fail every
+# CORS check (Origin exact-match) and every request would look like a network
+# error ("Failed to fetch") in the browser rather than a helpful 403.
 _extra_origins = [
-    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
+    o.strip().rstrip("/") for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()
 ]
 
 app.add_middleware(
