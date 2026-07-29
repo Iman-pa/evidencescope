@@ -14,12 +14,10 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-import matplotlib
-import numpy as np
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
-from pyDecision.algorithm import topsis_method
 
 from app.audit import get_audit_trail, log_analyze_request, log_override
 from app.extraction import ExtractionError, extract_evidence
@@ -28,7 +26,14 @@ from app.parsing import parse_pdf
 from app.scoring import compute_weighted_score
 from app.security import enforce_rate_limits, get_client_ip, verify_demo_access
 
-matplotlib.use("Agg")  # non-interactive backend — suppress any plot output from pyDecision
+# numpy/matplotlib/pyDecision are imported lazily inside compare() below, not
+# here at module load. Measured locally: importing them costs ~226MB of RSS
+# (pyDecision alone pulls in pandas, scipy, scikit-learn, flask, the openai
+# and google-genai SDKs, and networkx — none of which this app uses for
+# anything besides one TOPSIS call). On a 512MB Render instance, paying that
+# cost at startup for every request — including /health and /analyze, which
+# never touch this code path — leaves dangerously little headroom. Deferring
+# the import means only /compare pays for it, and only when it's actually used.
 
 app = FastAPI(title="EvidenceScope API")
 
@@ -147,9 +152,15 @@ async def analyze(request: Request, files: list[UploadFile] = File(...)):
                     detail=f"File '{upload.filename}' does not appear to be a PDF.",
                 )
             tmp_path = Path(tmpdir) / upload.filename
-            tmp_path.write_bytes(await upload.read())
+            # Stream to disk in chunks rather than buffering the whole upload
+            # in memory at once (`await upload.read()` with no size limit).
+            with tmp_path.open("wb") as f:
+                while chunk := await upload.read(1024 * 1024):
+                    f.write(chunk)
             try:
-                pages = parse_pdf(str(tmp_path))
+                # Runs in a worker thread so parsing a large PDF doesn't block
+                # the event loop — see the note on extract_evidence() below.
+                pages = await run_in_threadpool(parse_pdf, str(tmp_path))
             except Exception as exc:
                 raise HTTPException(
                     status_code=400,
@@ -171,7 +182,12 @@ async def analyze(request: Request, files: list[UploadFile] = File(...)):
         )
 
     try:
-        extraction = extract_evidence(merged, CRITERIA_DEFS)
+        # extract_evidence() makes several sequential, blocking Claude API
+        # calls (60-140s total). Running it directly here would block this
+        # worker's entire event loop for that whole time — no other request,
+        # including Render's own health checks, could be served in the
+        # meantime. run_in_threadpool offloads it to a worker thread instead.
+        extraction = await run_in_threadpool(extract_evidence, merged, CRITERIA_DEFS)
     except ExtractionError as exc:
         raise HTTPException(status_code=502, detail=f"Evidence extraction failed: {exc}")
     except Exception as exc:
@@ -311,6 +327,12 @@ def compare(req: CompareRequest):
     Uses the current scores and weights from each stored AnalysisState.
     Weights are averaged across all analyses for a neutral comparison baseline.
     """
+    import matplotlib
+
+    matplotlib.use("Agg")  # non-interactive backend — suppress any plot output from pyDecision
+    import numpy as np
+    from pyDecision.algorithm import topsis_method
+
     resolved: list[tuple[str, str, AnalysisState]] = []
     for item in req.comparisons:
         state = _analyses.get(item.analysis_id)

@@ -321,7 +321,12 @@ def extract_evidence(pages: list[dict], criteria_defs: list[dict]) -> dict:
         rationale, confidence) plus "has_conflicts", optional "conflicts",
         and "_token_usage" (total input/output tokens across all chunks).
     """
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    # The SDK's default read timeout is 600s per call — with 2-4 sequential
+    # calls per analysis, a single slow response could otherwise hang the
+    # whole request for up to 10 minutes before failing. 60s is generous for
+    # these prompts (max_tokens 400-1500) and ensures a slow call surfaces as
+    # a clean ExtractionError instead of hanging far past any reasonable limit.
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], timeout=60.0)
     criteria_keys = [c["key"] for c in criteria_defs]
     criteria_block = _build_criteria_block(criteria_defs)
 

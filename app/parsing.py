@@ -16,4 +16,9 @@ def parse_pdf(path: str) -> list[dict]:
             except Exception:
                 text = ""
             pages.append({"page_number": i, "text": text})
+            # pdfplumber caches each page's parsed objects (chars, rects, layout
+            # structures) and doesn't release them until the PDF is closed.
+            # Flushing after each page keeps memory flat across many pages
+            # instead of growing for the whole document.
+            page.flush_cache()
     return pages
