@@ -18,11 +18,16 @@ RATE_LIMIT_MESSAGE = (
 
 
 def verify_demo_access(x_demo_key: str | None = Header(None, alias="X-Demo-Key")) -> None:
-    """Require a matching X-Demo-Key header when DEMO_ACCESS_CODE is configured."""
-    expected = os.environ.get("DEMO_ACCESS_CODE")
+    """Require a matching X-Demo-Key header when DEMO_ACCESS_CODE is configured.
+
+    Strips the env var — a trailing space or newline pasted into a dashboard
+    text field is a common artifact and would otherwise silently reject every
+    legitimate request while looking, from the outside, like a config error.
+    """
+    expected = os.environ.get("DEMO_ACCESS_CODE", "").strip()
     if not expected:
         return
-    if x_demo_key != expected:
+    if (x_demo_key or "").strip() != expected:
         raise HTTPException(
             status_code=401,
             detail="Missing or invalid demo access code.",

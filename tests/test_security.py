@@ -114,6 +114,15 @@ class TestDemoAccessControl:
         resp = _post_analyze(client, sample_pdf)
         assert resp.status_code == 200
 
+    def test_env_var_whitespace_does_not_break_valid_code(self, client, sample_pdf, tmp_path, monkeypatch):
+        """A trailing space/newline pasted into a dashboard env var (a common
+        paste artifact) must not reject an otherwise-correct code."""
+        monkeypatch.setenv("AUDIT_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("DEMO_ACCESS_CODE", "secret123\n")
+
+        resp = _post_analyze(client, sample_pdf, headers={"X-Demo-Key": "secret123"})
+        assert resp.status_code == 200
+
 
 class TestRateLimiting:
     def test_per_ip_limit_enforced(self, client, sample_pdf, tmp_path, monkeypatch):
